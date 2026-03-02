@@ -85,13 +85,30 @@ void MainMenuHandler::Uninstall()
 
 void __fastcall MainMenuHandler::HookedTick(void* thisPtr, void* param2)
 {
-    // Call original tick first
+    // Call original tick first (always, even if our code would crash)
     if (s_originalTick) {
         s_originalTick(thisPtr, param2);
     }
 
     if (!thisPtr) return;
 
+    // Our accessibility logic — catch any exceptions so they don't kill the game
+    HookedTickSEH(thisPtr);
+}
+
+// SEH wrapper — no C++ objects with destructors
+void MainMenuHandler::HookedTickSEH(void* thisPtr)
+{
+    __try {
+        HookedTickInner(thisPtr);
+    } __except(EXCEPTION_EXECUTE_HANDLER) {
+        Logger_Log("MainMenu", "EXCEPTION in HookedTick (this=%p, code=0x%08lx)",
+                   thisPtr, GetExceptionCode());
+    }
+}
+
+void MainMenuHandler::HookedTickInner(void* thisPtr)
+{
     auto* handler = Get();
 
     // Track instance

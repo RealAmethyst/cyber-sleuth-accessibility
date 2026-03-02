@@ -63,6 +63,8 @@ private:
 
     // Our hooked tick function
     static void __fastcall HookedTick(void* thisPtr, void* param2);
+    static void HookedTickSEH(void* thisPtr);   // SEH wrapper (no C++ objects)
+    static void HookedTickInner(void* thisPtr);  // Inner logic
 
     // Read game state from the CUiMainMenu instance
     int32_t ReadCursor(void* thisPtr);

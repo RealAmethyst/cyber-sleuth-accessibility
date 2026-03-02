@@ -160,6 +160,18 @@ namespace MainMenu {
     constexpr uintptr_t SUBITEM_INDEX   = 0x29F8;   // int32, selected sub-item
 }
 
+// === CUiTitle member offsets (from Ghidra decompilation) ===
+namespace Title {
+    constexpr uintptr_t STATE           = 0xa8;   // uint32, state machine index (12 = interactive)
+    constexpr uintptr_t DONE_FLAG       = 0xb8;   // byte, exit flag
+    constexpr uintptr_t MODE_FLAG       = 0xbc;   // int32, 0 = normal title
+    constexpr uintptr_t CAMPAIGN        = 0xc0;   // int32, campaign select (0-3)
+    constexpr uintptr_t LOCKED_FLAG     = 0xc4;   // byte, 0 = "New Game +" locked
+    constexpr uintptr_t CURSOR_INDEX    = 0x114;  // int32, 0-3
+    constexpr uintptr_t PREV_CURSOR     = 0x118;  // int32, previous cursor
+    constexpr uintptr_t ITEM_COUNT      = 0x124;  // int32, max selectable items
+}
+
 // === Text system RVAs ===
 namespace Text {
     // Text table manager singleton
@@ -180,6 +192,42 @@ namespace Text {
     // Data table manager (for non-text game data)
     constexpr uintptr_t FUNC_GetDataTableManager  = 0x1B5300;
     constexpr uintptr_t FUNC_DataTableLookup      = 0x1B5920;
+}
+
+// === Vista / Subtitle system RVAs ===
+namespace Vista {
+    // Vista singleton — the cinematic/cutscene manager
+    constexpr uintptr_t DAT_VistaSingleton       = 0xF205E8;  // ptr to Vista object
+
+    // Subtitle loader singleton (0xa8-byte object, created on first LoadSubtitle call)
+    // Contains the loaded schedule data, cue vector, and playback state.
+    // The game's per-frame update (FUN_1401b66c0) advances cues based on time.
+    constexpr uintptr_t DAT_SubtitleLoader       = 0xF205D0;  // ptr to loader object
+
+    // Subtitle loader member offsets (from Ghidra decompilation of FUN_1401b66c0)
+    namespace Loader {
+        constexpr uintptr_t STATE        = 0x4C;  // int32: 1=loaded, 2=playing, 5=ending
+        constexpr uintptr_t TIME         = 0x58;  // int32: current playback time (ms)
+        constexpr uintptr_t PREV_TIME    = 0x5C;  // int32: previous frame time (ms)
+        constexpr uintptr_t NAME         = 0x68;  // ptr: subtitle schedule name (char*)
+        constexpr uintptr_t VECTOR_BEGIN = 0x80;  // ptr: cue vector begin
+        constexpr uintptr_t VECTOR_END   = 0x88;  // ptr: cue vector end (write pos)
+        constexpr uintptr_t CURSOR       = 0x98;  // ptr: current cue cursor (into vector)
+        constexpr uintptr_t DONE         = 0xA0;  // byte: done flag
+    }
+
+    // Cue data layout (from Ghidra — per cue in the vector):
+    //   vector entry (8 bytes) → cueStruct ptr (16-byte struct)
+    //   cueStruct[0] = row data ptr (points directly to column data)
+    //   cueStruct[1] = widget ptr (0xf8-byte subtitle widget)
+    //   Row data layout (3 dereferences total: vector → cueStruct → rowData):
+    //     +0x00: int32 id
+    //     +0x04: int32 StartTime (ms)
+    //     +0x08: int32 EndTime (ms)
+    //     +0x0C: int32 SubtitleTextID
+    constexpr uintptr_t CUE_COL_STARTTIME = 0x04;
+    constexpr uintptr_t CUE_COL_ENDTIME   = 0x08;
+    constexpr uintptr_t CUE_COL_TEXTID    = 0x0C;
 }
 
 // === Game context RVAs ===

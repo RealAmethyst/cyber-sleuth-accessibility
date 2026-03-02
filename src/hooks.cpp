@@ -8,6 +8,7 @@
 // following the same pattern as the Skyrim accessibility mod.
 
 #include "hooks.h"
+#include "speech_manager.h"
 #include "logger.h"
 
 #include <windows.h>
@@ -104,6 +105,9 @@ static BOOL WINAPI hooked_SwapBuffers(HDC hdc)
     if (g_frameCount == 60) {
         Logger_Log("Hooks", "SwapBuffers hook active (frame %d)", g_frameCount);
     }
+
+    // Flush queued speech from hook contexts (tick detours etc.)
+    SpeechManager::Get()->Flush();
 
     // Dispatch to all registered handlers
     {

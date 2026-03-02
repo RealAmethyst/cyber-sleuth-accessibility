@@ -2,10 +2,9 @@
 //
 // Hooks tick functions (vtable[3]) via MinHook (function-level, not vtable patching)
 // so calls are intercepted regardless of how the game dispatches them.
-// Identifies classes by checking this->vtable against known addresses.
 //
-// vtable[3] is the per-frame tick/update (confirmed via Ghidra decompilation).
-// vtable[2] is cleanup/teardown — only fires on screen transitions.
+// Each unique function gets its own template-instantiated detour, so the
+// trampoline lookup is direct (no fragile runtime vtable re-reads).
 
 #include "ui_probe.h"
 #include "memory_inspector.h"
@@ -18,17 +17,24 @@
 #include <windows.h>
 
 // ============================================================
-// Static state accessible from the detour
+// Static storage
 // ============================================================
 
-// Absolute vtable address -> class name
-static std::unordered_map<uintptr_t, std::string> s_vtableToName;
+UiProbe::HookEntry UiProbe::s_entries[MAX_HOOKS] = {};
+size_t UiProbe::s_entryCount = 0;
+std::unordered_map<uintptr_t, std::string> UiProbe::s_vtableToName;
+std::unordered_map<uintptr_t, bool> UiProbe::s_seenVtables;
 
-// Function address (target) -> trampoline pointer
-static std::unordered_map<uintptr_t, void*> s_funcToOriginal;
+// Runtime detour table (initialized once)
+void* UiProbe::s_detourTable[MAX_HOOKS] = {};
+bool UiProbe::s_detourTableInit = false;
 
-// Tracks first-seen instances to avoid log spam
-static std::unordered_map<uintptr_t, bool> s_seenVtables;
+void UiProbe::InitDetourTable()
+{
+    if (s_detourTableInit) return;
+    InitDetourTableImpl(std::make_index_sequence<MAX_HOOKS>{});
+    s_detourTableInit = true;
+}
 
 // ============================================================
 // UiProbe implementation
@@ -42,23 +48,22 @@ UiProbe* UiProbe::Get()
 
 void UiProbe::Install(const std::vector<ClassInfo>& classes)
 {
+    InitDetourTable();
+
     uintptr_t base = reinterpret_cast<uintptr_t>(getBaseOffset());
 
     Logger_Log("Probe", "Installing probes for %zu CUi classes (base: %p)",
                classes.size(), (void*)base);
 
-    // Step 1: Read vtable[2] for each class, build maps
-    // funcAddr -> list of classes using that function
+    // Step 1: Read vtable[3] for each class, build dedup map
     std::unordered_map<uintptr_t, std::vector<const char*>> funcToClasses;
 
     for (auto& cls : classes) {
         uintptr_t vtableAddr = base + cls.vtableRva;
 
-        // Read vtable[3] -- the per-frame tick function pointer
         uintptr_t* vtableSlot3 = reinterpret_cast<uintptr_t*>(
             vtableAddr + Offsets::VTABLE_TICK_INDEX * sizeof(uintptr_t));
 
-        // Verify readability
         MEMORY_BASIC_INFORMATION mbi = {};
         if (!VirtualQuery(vtableSlot3, &mbi, sizeof(mbi)) ||
             mbi.State != MEM_COMMIT) {
@@ -69,10 +74,7 @@ void UiProbe::Install(const std::vector<ClassInfo>& classes)
 
         uintptr_t funcAddr = *vtableSlot3;
 
-        // Store vtable -> name mapping (absolute vtable address)
-        m_vtableToName[vtableAddr] = cls.name;
-
-        // Track which functions are shared
+        s_vtableToName[vtableAddr] = cls.name;
         funcToClasses[funcAddr].push_back(cls.name);
 
         Logger_Log("Probe", "  %s: vtable=0x%llx, tick[3]=0x%llx",
@@ -80,22 +82,29 @@ void UiProbe::Install(const std::vector<ClassInfo>& classes)
                    (unsigned long long)funcAddr);
     }
 
-    // Copy to static map for detour access
-    s_vtableToName = m_vtableToName;
+    // Step 2: Hook each unique function with its own detour
+    s_entryCount = 0;
 
-    // Step 2: Hook each unique function
-    size_t hooked = 0;
     for (auto& [funcAddr, classNames] : funcToClasses) {
-        // Skip if already hooked (shouldn't happen, but safety)
-        if (m_funcToOriginal.count(funcAddr)) continue;
+        if (s_entryCount >= MAX_HOOKS) {
+            Logger_Log("Probe", "  WARNING: hit MAX_HOOKS (%zu), skipping remaining", MAX_HOOKS);
+            break;
+        }
 
+        size_t idx = s_entryCount;
         void* target = reinterpret_cast<void*>(funcAddr);
+        void* detour = s_detourTable[idx];
         void* original = nullptr;
 
-        MH_STATUS status = MH_CreateHook(target, (void*)&ProbeDetour, &original);
+        MH_STATUS status = MH_CreateHook(target, detour, &original);
         if (status != MH_OK) {
-            Logger_Log("Probe", "  MH_CreateHook failed for 0x%llx: %d (shared by: %s)",
-                       (unsigned long long)funcAddr, status, classNames[0]);
+            std::string shared;
+            for (auto& n : classNames) {
+                if (!shared.empty()) shared += ", ";
+                shared += n;
+            }
+            Logger_Log("Probe", "  MH_CreateHook failed for 0x%llx: %d (classes: %s)",
+                       (unsigned long long)funcAddr, status, shared.c_str());
             continue;
         }
 
@@ -107,25 +116,28 @@ void UiProbe::Install(const std::vector<ClassInfo>& classes)
             continue;
         }
 
-        m_funcToOriginal[funcAddr] = original;
-        m_hookedTargets.push_back(target);
+        // Fill the entry BEFORE incrementing count (detour might fire immediately
+        // on another thread, though unlikely during DLL init)
+        s_entries[idx].trampoline = original;
+        s_entries[idx].targetFunc = funcAddr;
 
-        // Log which classes share this function
+        // Build class names string (into fixed buffer)
         std::string shared;
         for (auto& n : classNames) {
             if (!shared.empty()) shared += ", ";
             shared += n;
         }
-        Logger_Log("Probe", "  Hooked 0x%llx -> trampoline %p (classes: %s)",
-                   (unsigned long long)funcAddr, original, shared.c_str());
-        hooked++;
+        strncpy_s(s_entries[idx].classNames, shared.c_str(), _TRUNCATE);
+
+        m_hookedTargets.push_back(target);
+        s_entryCount++;
+
+        Logger_Log("Probe", "  Hooked[%zu] 0x%llx -> trampoline %p (classes: %s)",
+                   idx, (unsigned long long)funcAddr, original, shared.c_str());
     }
 
-    // Copy to static map for detour access
-    s_funcToOriginal = m_funcToOriginal;
-
     Logger_Log("Probe", "Probe install complete: %zu classes, %zu unique functions hooked",
-               classes.size(), hooked);
+               classes.size(), s_entryCount);
 }
 
 void UiProbe::Uninstall()
@@ -138,22 +150,66 @@ void UiProbe::Uninstall()
     Logger_Log("Probe", "Uninstalled %zu function hooks", m_hookedTargets.size());
 
     m_hookedTargets.clear();
-    m_funcToOriginal.clear();
-    m_vtableToName.clear();
-    s_funcToOriginal.clear();
+    s_entryCount = 0;
+    for (size_t i = 0; i < MAX_HOOKS; i++) {
+        s_entries[i] = {};
+    }
     s_vtableToName.clear();
     s_seenVtables.clear();
 }
 
 // ============================================================
-// Detour -- called for ALL probed update functions
+// SEH wrapper — NO C++ objects, safe for __try/__except
 // ============================================================
 
-void __fastcall UiProbe::ProbeDetour(void* thisPtr, void* param2)
+void UiProbe::ProbeCommonSEH(size_t hookIndex, void* thisPtr, void* param2)
+{
+    // Fast path: if this hook already faulted, just call the original and bail
+    if (hookIndex < s_entryCount && s_entries[hookIndex].disabled) {
+        // Still call the original so game logic runs
+        __try {
+            if (s_entries[hookIndex].trampoline) {
+                auto original = reinterpret_cast<void(__fastcall*)(void*, void*)>(
+                    s_entries[hookIndex].trampoline);
+                original(thisPtr, param2);
+            }
+        } __except(EXCEPTION_EXECUTE_HANDLER) {
+            // Original also faults — nothing we can do, just skip silently
+        }
+        return;
+    }
+
+    __try {
+        ProbeCommonInner(hookIndex, thisPtr, param2);
+    } __except(EXCEPTION_EXECUTE_HANDLER) {
+        // Log ONCE, then disable this hook to stop spam
+        if (hookIndex < s_entryCount) {
+            Logger_Log("Probe", "EXCEPTION in hook[%zu] '%s' (this=%p, code=0x%08lx) — disabling probe",
+                       hookIndex, s_entries[hookIndex].classNames,
+                       thisPtr, GetExceptionCode());
+            s_entries[hookIndex].disabled = true;
+        }
+    }
+}
+
+// ============================================================
+// Inner logic — may use C++ objects freely
+// ============================================================
+
+void UiProbe::ProbeCommonInner(size_t hookIndex, void* thisPtr, void* param2)
 {
     if (!thisPtr) return;
+    if (hookIndex >= s_entryCount) return;
 
-    // Read vtable pointer (first qword of object)
+    auto& entry = s_entries[hookIndex];
+
+    // Call original function via trampoline (direct lookup — no vtable re-read)
+    if (entry.trampoline) {
+        auto original = reinterpret_cast<void(__fastcall*)(void*, void*)>(entry.trampoline);
+        original(thisPtr, param2);
+    }
+
+    // Read vtable pointer for class identification
     uintptr_t vtable = *reinterpret_cast<uintptr_t*>(thisPtr);
 
     // Identify the class from vtable address
@@ -162,21 +218,13 @@ void __fastcall UiProbe::ProbeDetour(void* thisPtr, void* param2)
         ? nameIt->second
         : "UnknownCUi";
 
-    // Call original function via trampoline
-    // Look up the function address from vtable[3] (tick) to find the right trampoline
-    uintptr_t funcAddr = reinterpret_cast<uintptr_t*>(vtable)[Offsets::VTABLE_TICK_INDEX];
-    auto origIt = s_funcToOriginal.find(funcAddr);
-    if (origIt != s_funcToOriginal.end()) {
-        auto original = reinterpret_cast<void(__fastcall*)(void*, void*)>(origIt->second);
-        original(thisPtr, param2);
-    }
-
-    // Log first time we see each class
+    // Log first time we see each unique vtable
     if (!s_seenVtables.count(vtable)) {
         s_seenVtables[vtable] = true;
-        Logger_Log("Probe", "ACTIVE: %s (this=%p, vtable=0x%llx)",
+        Logger_Log("Probe", "ACTIVE: %s (this=%p, vtable=0x%llx, hook[%zu]=%s)",
                    className.c_str(), thisPtr,
-                   (unsigned long long)vtable);
+                   (unsigned long long)vtable,
+                   hookIndex, entry.classNames);
     }
 
     // Register with MemoryInspector for F5 dumps

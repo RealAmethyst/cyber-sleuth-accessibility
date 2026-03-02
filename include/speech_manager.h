@@ -3,9 +3,13 @@
 #include <atomic>
 #include <mutex>
 #include <string>
+#include <vector>
 
 // Centralized speech output via SRAL (Screen Reader Abstraction Layer).
-// Replaces Tolk with a more robust multi-engine approach.
+//
+// IMPORTANT: Speak() is safe to call from ANY thread/hook context (tick
+// detours, etc.). It queues requests internally. Call Flush() once per
+// frame from the SwapBuffers hook to actually dispatch to SRAL.
 //
 // Usage: SpeechManager::Get()->Speak("text", true);
 class SpeechManager
@@ -20,10 +24,13 @@ public:
     // Shut down SRAL and close log.
     void Shutdown();
 
-    // Main speech output — all announcements go through here.
+    // Queue a speech request. Thread-safe, never blocks the game.
     // interrupt=true: clears current speech (cursor navigation)
     // interrupt=false: queues after current speech (menu name + first item)
     void Speak(const std::string& text, bool interrupt = true);
+
+    // Dispatch queued speech to SRAL. Call once per frame from SwapBuffers.
+    void Flush();
 
     // Stop all current speech.
     void Silence();
@@ -42,8 +49,15 @@ private:
 
     void LogSpeech(const std::string& text, bool interrupt);
 
+    struct SpeechRequest {
+        std::string text;
+        bool interrupt;
+    };
+
     FILE* m_speechLog = nullptr;
     std::mutex m_logMutex;
+    std::mutex m_queueMutex;
+    std::vector<SpeechRequest> m_queue;
     std::atomic<bool> m_muted{false};
     bool m_initialized = false;
 };

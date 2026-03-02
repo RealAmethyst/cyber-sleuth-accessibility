@@ -5,22 +5,16 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <array>
 #include <unordered_map>
 
 // Discovery tool: hooks update functions for many CUi* classes via MinHook,
 // identifies which are active by checking vtable pointers at runtime,
 // and registers them with MemoryInspector for F5 dumps.
 //
-// MinHook patches the function prologue so ALL calls are intercepted
-// regardless of dispatch mechanism (vtable, direct call, table-driven).
-//
-// NOTE: Requires unpacked exe (Steamless). With stock Steam DRM, the
-// unpacker overwrites MinHook patches. Development/testing uses the
-// unpacked exe; shipping plugin will use delayed hook installation.
-//
-// Multiple classes may share the same update function (inherited from base).
-// UiProbe handles this by deduplicating hooks and identifying the class
-// from this->vtable in the detour.
+// Uses per-function template detours so each hook knows exactly which
+// trampoline to call -- no fragile runtime vtable lookups.
+
 class UiProbe
 {
 public:
@@ -28,31 +22,57 @@ public:
 
     struct ClassInfo {
         const char* name;
-        uintptr_t vtableRva;  // RVA of the vtable (not the function)
+        uintptr_t vtableRva;
     };
 
-    // Install MinHook detours for all given classes.
-    // Reads vtable[3] (tick) for each to find the actual function address,
-    // deduplicates, and hooks each unique function.
-    // Call AFTER hooks_init() (MinHook must be initialized).
     void Install(const std::vector<ClassInfo>& classes);
-
     void Uninstall();
+
+    static constexpr size_t MAX_HOOKS = 32;
+
+    struct HookEntry {
+        void* trampoline = nullptr;
+        uintptr_t targetFunc = 0;
+        char classNames[128] = {};  // POD-safe, no std::string in SEH path
+        bool disabled = false;      // Set on fault — skips all logic, stops log spam
+    };
+
+    static HookEntry s_entries[MAX_HOOKS];
+    static size_t s_entryCount;
+    static std::unordered_map<uintptr_t, std::string> s_vtableToName;
 
 private:
     UiProbe() = default;
 
-    // Absolute vtable address -> class name (for identification in detour)
-    std::unordered_map<uintptr_t, std::string> m_vtableToName;
-
-    // Hooked function address -> trampoline (original function)
-    std::unordered_map<uintptr_t, void*> m_funcToOriginal;
-
-    // List of hooked function addresses (for cleanup)
     std::vector<void*> m_hookedTargets;
 
-    // Single detour for all probed classes.
-    // Identifies class from this->vtable, calls correct original via trampoline.
-    // vtable[3] tick takes (this, param2).
-    static void __fastcall ProbeDetour(void* thisPtr, void* param2);
+    // Per-index template detour
+    template<size_t Index>
+    static void __fastcall ProbeDetourN(void* thisPtr, void* param2);
+
+    // SEH wrapper (no C++ objects — safe for __try/__except)
+    static void ProbeCommonSEH(size_t hookIndex, void* thisPtr, void* param2);
+
+    // Inner logic (may use C++ objects)
+    static void ProbeCommonInner(size_t hookIndex, void* thisPtr, void* param2);
+
+    // Runtime-initialized detour table
+    static void* s_detourTable[MAX_HOOKS];
+    static bool s_detourTableInit;
+    static void InitDetourTable();
+
+    template<size_t... Is>
+    static void InitDetourTableImpl(std::index_sequence<Is...>) {
+        ((s_detourTable[Is] = reinterpret_cast<void*>(&ProbeDetourN<Is>)), ...);
+    }
+
+    static std::unordered_map<uintptr_t, bool> s_seenVtables;
 };
+
+// Template detour implementations
+template<size_t Index>
+void __fastcall UiProbe::ProbeDetourN(void* thisPtr, void* param2)
+{
+    static_assert(Index < MAX_HOOKS, "Hook index out of range");
+    ProbeCommonSEH(Index, thisPtr, param2);
+}

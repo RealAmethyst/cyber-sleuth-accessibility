@@ -82,10 +82,30 @@ void SpeechManager::Speak(const std::string& text, bool interrupt)
     if (text.empty()) return;
     if (!m_initialized) return;
     if (m_muted.load(std::memory_order_relaxed)) return;
+
+    // Queue only — never call SRAL from arbitrary hook contexts.
+    std::lock_guard<std::mutex> lock(m_queueMutex);
+    m_queue.push_back({text, interrupt});
+}
+
+void SpeechManager::Flush()
+{
+    if (!m_initialized) return;
+
+    // Swap queue out under lock, then dispatch without holding it.
+    std::vector<SpeechRequest> pending;
+    {
+        std::lock_guard<std::mutex> lock(m_queueMutex);
+        pending.swap(m_queue);
+    }
+
+    if (pending.empty()) return;
     if (SRAL_GetCurrentEngine() == 0) return;
 
-    LogSpeech(text, interrupt);
-    SRAL_Speak(text.c_str(), interrupt);
+    for (auto& req : pending) {
+        LogSpeech(req.text, req.interrupt);
+        SRAL_Speak(req.text.c_str(), req.interrupt);
+    }
 }
 
 void SpeechManager::Silence()

@@ -5,10 +5,11 @@
 #include "speech_manager.h"
 #include "hooks.h"
 #include "memory_inspector.h"
-#include "ui_probe.h"
 #include "offsets.h"
 #include "handlers/main_menu_handler.h"
 #include "handlers/title_handler.h"
+#include "handlers/subtitle_handler.h"
+#include "text_capture.h"
 
 class CyberSleuthAccessibility : public BasePlugin
 {
@@ -22,7 +23,7 @@ public:
 void CyberSleuthAccessibility::onEnable()
 {
     Logger_Init();
-    Logger_Log("Main", "Plugin onEnable — v0.5.0 (vtable[3] tick hooks + text API)");
+    Logger_Log("Main", "Plugin onEnable — v0.9.0 (SubtitleHandler)");
 
     auto* speech = SpeechManager::Get();
     if (speech->Initialize()) {
@@ -40,44 +41,25 @@ void CyberSleuthAccessibility::onEnable()
     // Register MemoryInspector for F5 hotkey polling
     RegisterFrameHandler(MemoryInspector::Get());
 
-    // Install MainMenuHandler — hooks CUiMainMenu vtable[3] tick via MinHook,
+    // Install TitleHandler — hooks CUiTitle tick via MinHook,
+    // tracks state (+0xa8) and cursor (+0x114) for title menu.
+    TitleHandler::Get()->Install();
+    RegisterFrameHandler(TitleHandler::Get());
+
+    // Install MainMenuHandler — hooks CUiMainMenu tick via MinHook,
     // reads cursor from this+0x27D8, announces menu items via text API.
     MainMenuHandler::Get()->Install();
     RegisterFrameHandler(MainMenuHandler::Get());
 
-    // Probe a broad set of CUi classes to discover which are active.
-    // MinHook patches function prologues (vtable[3] tick) so ALL calls are
-    // intercepted regardless of dispatch mechanism.
-    UiProbe::Get()->Install({
-        // Title / startup screens
-        {"CUiTitle",           Offsets::VTABLE_CUiTitle},
-        {"CUiTitleLogo",       Offsets::VTABLE_CUiTitleLogo},
-        {"CUiScenarioSelect",  Offsets::VTABLE_CUiScenarioSelect},
-        {"CUiFirstSequence",   Offsets::VTABLE_CUiFirstSequence},
+    // Install TextCapture — hooks LookupText to capture all text the game
+    // fetches from MBE tables (subtitles, dialogs, info messages, etc.).
+    TextCapture::Get()->Install();
+    RegisterFrameHandler(TextCapture::Get());
 
-        // Main / top-level menus
-        {"CUiMenuTop",         Offsets::VTABLE_CUiMenuTop},
-        {"CUiMainMenu",        Offsets::VTABLE_CUiMainMenu},
-        {"CUiBaseMenu",        Offsets::VTABLE_CUiBaseMenu},
-
-        // System menus
-        {"CUiOption",          Offsets::VTABLE_CUiOption},
-        {"CUiSaveload",        Offsets::VTABLE_CUiSaveload},
-        {"CUiSettingMenu",     Offsets::VTABLE_CUiSettingMenu},
-
-        // Dialog / selection
-        {"CUiTalkWindow",      Offsets::VTABLE_CUiTalkWindow},
-        {"CUiYesNoWindow",     Offsets::VTABLE_CUiYesNoWindow},
-        {"CUiMultiSelectWindow", Offsets::VTABLE_CUiMultiSelectWindow},
-        {"CUiInfoWindow",      Offsets::VTABLE_CUiInfoWindow},
-
-        // Field
-        {"CUiField_001",       Offsets::VTABLE_CUiField_001},
-        {"CUiField_002",       Offsets::VTABLE_CUiField_002},
-
-        // Loading
-        {"CUiLoading",         Offsets::VTABLE_CUiLoading},
-    });
+    // Install SubtitleHandler — polls Vista singleton for subtitle player,
+    // reads elapsed time + schedule, speaks active subtitle line.
+    SubtitleHandler::Get()->Install();
+    RegisterFrameHandler(SubtitleHandler::Get());
 
     Logger_Log("Main", "Plugin startup complete. Press F5 to dump active CUi memory.");
 }
@@ -86,11 +68,19 @@ void CyberSleuthAccessibility::onDisable()
 {
     Logger_Log("Main", "Plugin onDisable");
 
+    UnregisterFrameHandler(SubtitleHandler::Get());
+    SubtitleHandler::Get()->Uninstall();
+
+    UnregisterFrameHandler(TextCapture::Get());
+    TextCapture::Get()->Uninstall();
+
     UnregisterFrameHandler(MainMenuHandler::Get());
     MainMenuHandler::Get()->Uninstall();
 
+    UnregisterFrameHandler(TitleHandler::Get());
+    TitleHandler::Get()->Uninstall();
+
     UnregisterFrameHandler(MemoryInspector::Get());
-    UiProbe::Get()->Uninstall();
 
     hooks_shutdown();
     SpeechManager::Get()->Shutdown();
@@ -101,7 +91,7 @@ const PluginInfo CyberSleuthAccessibility::getPluginInfo()
 {
     PluginInfo info;
     info.apiVersion = {0, 0, 0};
-    info.version    = {0, 5, 0};
+    info.version    = {0, 8, 0};
     info.name       = "Cyber Sleuth Accessibility";
     return info;
 }

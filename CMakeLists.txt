@@ -52,8 +52,10 @@ add_library(CyberSleuthAccessibility SHARED
   src/hooks.cpp
   src/memory_inspector.cpp
   src/ui_probe.cpp
+  src/text_capture.cpp
   src/handlers/main_menu_handler.cpp
   src/handlers/title_handler.cpp
+  src/handlers/subtitle_handler.cpp
 )
 
 target_include_directories(CyberSleuthAccessibility PRIVATE include)
