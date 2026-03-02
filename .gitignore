@@ -1,0 +1,21 @@
+# Build output
+build/
+out/
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+*.sln
+*.vcxproj*
+CMakeSettings.json
+
+# CPM cache
+cmake-build-*/
+_deps/
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
