@@ -50,7 +50,10 @@ add_library(CyberSleuthAccessibility SHARED
   src/logger.cpp
   src/speech_manager.cpp
   src/hooks.cpp
+  src/memory_inspector.cpp
+  src/ui_probe.cpp
   src/handlers/main_menu_handler.cpp
+  src/handlers/title_handler.cpp
 )
 
 target_include_directories(CyberSleuthAccessibility PRIVATE include)

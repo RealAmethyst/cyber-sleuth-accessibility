@@ -9,20 +9,24 @@ namespace Offsets {
 
 // === CUi* VTable RVAs (from Ghidra RTTI extraction) ===
 // Each vtable has 13 entries (indices 0-12) for standard CUi classes.
-// Common vtable layout (based on CUiBase hierarchy):
-//   [0] destructor / first virtual
-//   [1] init / setup
-//   [2] update / tick  (likely the per-frame update)
-//   [3] draw / render
-//   [4] some state check
-//   [5] 0x13bf00 (empty base virtual)
-//   [6] handler / event
-//   [7] varies
-//   [8] varies
-//   [9] 0x13b970 (empty base virtual)
-//   [10] some callback
+// Confirmed vtable layout (Ghidra decompilation of unpacked exe):
+//   [0]  destructor
+//   [1]  init / setup (OnOpen)
+//   [2]  CLEANUP / TEARDOWN — destroys child objects, zeros pointers
+//        NOT per-frame! Only fires on screen transitions.
+//   [3]  TICK / UPDATE — per-frame state machine dispatch (**THE REAL UPDATE**)
+//        Signature: void tick(this, param_2)
+//   [4]  state check / state setter
+//   [5]  0x13bf00 (empty base virtual)
+//   [6]  message handler (not per-frame)
+//   [7]  varies (base virtual)
+//   [8]  varies (base virtual)
+//   [9]  0x13b970 (empty base virtual)
+//   [10] post-tick / render children callback
 //   [11] 0x13b970 (empty base virtual)
 //   [12] cleanup / finalize
+
+constexpr int VTABLE_TICK_INDEX = 3;   // Per-frame update slot
 
 // --- Key menus ---
 constexpr uintptr_t VTABLE_CUiMainMenu       = 0xab0588;
@@ -126,8 +130,67 @@ constexpr uintptr_t VTABLE_CUiBaseMenu        = 0xaaf9c0;
 constexpr uintptr_t VTABLE_CUiAuthorization   = 0xaac810;
 constexpr uintptr_t VTABLE_CUiMedalList       = 0xaaeaa0;
 
+// === Tick function RVAs (vtable[3] contents) ===
+// These are the actual code addresses for the per-frame tick/update.
+// Use with MinHook (MH_CreateHook) for reliable interception regardless
+// of how the game dispatches calls (vtable, direct, table-driven).
+// Signature: void __fastcall tick(void* thisPtr, void* param2)
+constexpr uintptr_t FUNC_CUiTitle_Tick        = 0x4CC2F0;
+constexpr uintptr_t FUNC_CUiMainMenu_Tick     = 0x4B6270;
+
+// Old vtable[2] cleanup/teardown RVAs (NOT per-frame — only fire on transitions)
+constexpr uintptr_t FUNC_CUiTitle_Cleanup     = 0x4CC160;
+constexpr uintptr_t FUNC_CUiMainMenu_Cleanup  = 0x4B49D0;
+
 // --- Common base class empty virtuals (for identification) ---
 constexpr uintptr_t FUNC_EMPTY_VIRTUAL_1      = 0x13b970;  // appears at [9], [11] in most vtables
 constexpr uintptr_t FUNC_EMPTY_VIRTUAL_2      = 0x13bf00;  // appears at [5] in most vtables
+
+// === CUiMainMenu member offsets (from Ghidra decompilation) ===
+namespace MainMenu {
+    constexpr uintptr_t CURSOR_INDEX    = 0x27D8;  // int32, 0-7 (wraps)
+    constexpr uintptr_t STATE           = 0x2928;   // int16, states 0-5
+    constexpr uintptr_t DONE_FLAG       = 0x2828;   // byte, signals menu closing
+    constexpr uintptr_t ITEM_COUNT      = 0x2A08;   // int32, max 8
+    constexpr uintptr_t ITEMS_BASE      = 0x160;    // 8 item slots, stride 0x50
+    constexpr uintptr_t ITEM_STRIDE     = 0x50;
+    constexpr uintptr_t CATEGORY_BASE   = 0x3E0;    // 3 category entries, stride 0x300
+    constexpr uintptr_t CATEGORY_STRIDE = 0x300;
+    constexpr uintptr_t CATEGORY_INDEX  = 0x29F0;   // int32, selected category
+    constexpr uintptr_t SUBITEM_INDEX   = 0x29F8;   // int32, selected sub-item
+}
+
+// === Text system RVAs ===
+namespace Text {
+    // Text table manager singleton
+    constexpr uintptr_t FUNC_GetTextTableManager = 0x1B8BC0;  // returns void*
+    constexpr uintptr_t DAT_TextTableManager     = 0xF205D8;  // cached singleton
+
+    // Core text lookup: char* LookupText(manager, tableName, rowId, language)
+    constexpr uintptr_t FUNC_LookupText          = 0x1B9260;
+
+    // Language settings singleton
+    constexpr uintptr_t DAT_LanguageSettings      = 0xF206C8;  // ptr to 0x150 object
+    constexpr uintptr_t LANGUAGE_INDEX_OFFSET      = 0xB4;      // int32 at settings+0xB4
+
+    // Convenience wrappers (call LookupText internally)
+    constexpr uintptr_t FUNC_GetItemName          = 0x4B7C70;  // char*(int id) — "item_name" table
+    constexpr uintptr_t FUNC_GetSkillName         = 0x4B7E60;  // char*(int id) — "skill_name" table
+
+    // Data table manager (for non-text game data)
+    constexpr uintptr_t FUNC_GetDataTableManager  = 0x1B5300;
+    constexpr uintptr_t FUNC_DataTableLookup      = 0x1B5920;
+}
+
+// === Game context RVAs ===
+namespace Context {
+    constexpr uintptr_t DAT_GameContext           = 0xF205C0;  // ptr to GameContext singleton
+    constexpr uintptr_t FUNC_GetGameContext       = 0x1A70D0;  // returns GameContext*
+    constexpr uintptr_t STORY_MODE_OFFSET         = 0x90;      // ptr at GameContext+0x90
+    constexpr uintptr_t STORY_MODE_CHECK          = 0x08;      // int at storyMode+8 (0=CS, else=HM)
+    constexpr uintptr_t DIGIMON_CS_OFFSET         = 0x10;      // data ptr for Cyber Sleuth
+    constexpr uintptr_t DIGIMON_HM_OFFSET         = 0x60;      // data ptr for Hacker's Memory
+    constexpr uintptr_t MENU_ITEMS_VECTOR         = 0x20;      // std::vector<char*> begin at data+0x20
+}
 
 }

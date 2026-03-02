@@ -1,40 +1,22 @@
 // CUiMainMenu accessibility handler.
 //
-// Current status: SKELETON — vtable hook infrastructure is ready,
-// but member offsets (cursor index, item list) need runtime discovery.
+// Hooks vtable[3] (tick/update) via MinHook to get per-frame callbacks.
+// Reads cursor position at this+0x27D8 and uses the game's text lookup
+// API to get localized menu item names dynamically.
 //
-// Next steps:
-// 1. Attach debugger, set breakpoint on CUiMainMenu vtable[2] (RVA 0x4b49d0)
-// 2. When it hits, inspect 'this' pointer (rcx) members
-// 3. Find cursor index offset and item count
-// 4. Fill in CheckStateChanges() to read those members
-// 5. Look up menu item text from game's text tables (MBE CSVs)
-//
-// The vtable layout for CUiMainMenu (13 entries):
-//   [0] 0x4b3d50  — destructor
-//   [1] 0x4b4200  — init
-//   [2] 0x4b49d0  — update/tick (THIS IS WHAT WE HOOK)
-//   [3] 0x4b6270  — draw
-//   [4] 0x4b64f0  — state check
-//   [5] 0x13bf00  — empty base virtual
-//   [6] 0x4b6680  — event handler
-//   [7] 0x2a35a0  — base virtual
-//   [8] 0x2a35c0  — base virtual
-//   [9] 0x13b970  — empty base virtual
-//   [10] 0x4b6af0 — callback
-//   [11] 0x13b970 — empty base virtual
-//   [12] 0x4b7320 — cleanup
+// Text lookup: FUN_1401b9260(textManager, "main_menu", id, language)
+// main_menu.mbe IDs: 1=Organize, 2=Items, 3=Status, 4=Options,
+//   5=Save/Load, 6=Sort Digimon, 7=Farm, 8=Exit
 
 #include "handlers/main_menu_handler.h"
+#include "memory_inspector.h"
 #include "speech_manager.h"
 #include "offsets.h"
 #include "logger.h"
 
 #include <modloader/utils.h>
+#include <MinHook.h>
 #include <windows.h>
-
-// Vtable index for the update/tick function
-static constexpr int VTABLE_UPDATE_INDEX = 2;
 
 MainMenuHandler* MainMenuHandler::Get()
 {
@@ -42,96 +24,212 @@ MainMenuHandler* MainMenuHandler::Get()
     return &instance;
 }
 
-void MainMenuHandler::Install(void* menuInstance)
+void MainMenuHandler::Install()
 {
     if (m_installed) return;
-    if (!menuInstance) return;
 
-    m_menuInstance = menuInstance;
+    uintptr_t base = reinterpret_cast<uintptr_t>(getBaseOffset());
 
-    // Hook vtable[2] (update/tick)
-    s_originalUpdate = reinterpret_cast<UpdateFunc>(
-        HookVTableEntry(menuInstance, VTABLE_UPDATE_INDEX, (void*)&HookedUpdate));
+    // Resolve text API function pointers
+    s_getTextTableManager = reinterpret_cast<GetTextTableManagerFunc>(
+        base + Offsets::Text::FUNC_GetTextTableManager);
+    s_lookupText = reinterpret_cast<LookupTextFunc>(
+        base + Offsets::Text::FUNC_LookupText);
 
-    if (s_originalUpdate) {
-        m_installed = true;
-        m_lastCursorIndex = -1;
-        m_menuNameAnnounced = false;
-        Logger_Log("MainMenu", "VTable hook installed on CUiMainMenu instance %p", menuInstance);
-    } else {
-        Logger_Log("MainMenu", "FAILED to hook CUiMainMenu vtable");
+    Logger_Log("MainMenu", "Text API resolved: GetTextTableManager=%p, LookupText=%p",
+               (void*)s_getTextTableManager, (void*)s_lookupText);
+
+    // Hook CUiMainMenu's tick function (vtable[3]) via MinHook
+    s_hookTarget = reinterpret_cast<void*>(base + Offsets::FUNC_CUiMainMenu_Tick);
+
+    MH_STATUS status = MH_CreateHook(s_hookTarget, (void*)&HookedTick,
+                                      reinterpret_cast<void**>(&s_originalTick));
+    if (status != MH_OK) {
+        Logger_Log("MainMenu", "MH_CreateHook failed for tick @ 0x%llx: %d",
+                   (unsigned long long)(base + Offsets::FUNC_CUiMainMenu_Tick), status);
+        return;
     }
+
+    status = MH_EnableHook(s_hookTarget);
+    if (status != MH_OK) {
+        Logger_Log("MainMenu", "MH_EnableHook failed: %d", status);
+        MH_RemoveHook(s_hookTarget);
+        return;
+    }
+
+    m_installed = true;
+    Logger_Log("MainMenu", "MinHook installed on CUiMainMenu tick (RVA 0x%llx)",
+               (unsigned long long)Offsets::FUNC_CUiMainMenu_Tick);
 }
 
 void MainMenuHandler::Uninstall()
 {
-    if (!m_installed || !m_menuInstance) return;
+    if (!m_installed) return;
 
-    // Restore original vtable entry
-    if (s_originalUpdate) {
-        HookVTableEntry(m_menuInstance, VTABLE_UPDATE_INDEX, (void*)s_originalUpdate);
+    if (s_hookTarget) {
+        MH_DisableHook(s_hookTarget);
+        MH_RemoveHook(s_hookTarget);
     }
 
-    s_originalUpdate = nullptr;
-    m_menuInstance = nullptr;
-    m_installed = false;
+    s_originalTick = nullptr;
+    s_hookTarget = nullptr;
+    m_lastThisPtr = nullptr;
     m_lastCursorIndex = -1;
-    m_menuNameAnnounced = false;
-    Logger_Log("MainMenu", "VTable hook uninstalled");
+    m_lastState = -1;
+    m_menuActive = false;
+    m_installed = false;
+
+    MemoryInspector::Get()->ClearPointer("CUiMainMenu");
+    Logger_Log("MainMenu", "MinHook uninstalled");
 }
 
-void __fastcall MainMenuHandler::HookedUpdate(void* thisPtr)
+void __fastcall MainMenuHandler::HookedTick(void* thisPtr, void* param2)
 {
-    // Call original update first
-    if (s_originalUpdate) {
-        s_originalUpdate(thisPtr);
+    // Call original tick first
+    if (s_originalTick) {
+        s_originalTick(thisPtr, param2);
     }
 
-    // Then check for accessibility-relevant state changes
+    if (!thisPtr) return;
+
     auto* handler = Get();
-    if (handler->m_installed) {
-        handler->CheckStateChanges();
+
+    // Track instance
+    if (handler->m_lastThisPtr != thisPtr) {
+        handler->m_lastThisPtr = thisPtr;
+        Logger_Log("MainMenu", "CUiMainMenu tick firing (this=%p)", thisPtr);
     }
+
+    MemoryInspector::Get()->SetActivePointer("CUiMainMenu", thisPtr);
+
+    // Check for state changes and announce
+    handler->CheckStateChanges(thisPtr);
 }
 
 void MainMenuHandler::OnFrame()
 {
-    // For now, OnFrame does nothing extra — all work happens in HookedUpdate.
-    // This will be used later for scanning/discovering the CUiMainMenu instance
-    // when we detect the menu has opened (e.g., by scanning for objects whose
-    // vtable matches VTABLE_CUiMainMenu).
-    //
-    // TODO: Implement menu instance discovery:
-    // 1. On each frame, check if main menu is open (game state table at RVA 0xa59800)
-    // 2. If open and not yet hooked, scan for the CUiMainMenu instance
-    // 3. Call Install() on the found instance
+    // All work happens in HookedTick via MinHook.
 }
 
-void MainMenuHandler::CheckStateChanges()
+// === State reading helpers ===
+
+int32_t MainMenuHandler::ReadCursor(void* thisPtr)
 {
-    // TODO: Read cursor index from this->m_menuInstance + CURSOR_OFFSET
-    // TODO: Read item count from this->m_menuInstance + COUNT_OFFSET
-    // TODO: Compare with m_lastCursorIndex
-    // TODO: If changed, call AnnounceCurrentItem()
-    //
-    // Member offsets need runtime discovery:
-    // - Set breakpoint on RVA 0x4b49d0 (vtable[2])
-    // - Inspect rcx (this pointer) when navigating menu
-    // - Watch which members change when cursor moves
+    auto* ptr = reinterpret_cast<uint8_t*>(thisPtr);
+    return *reinterpret_cast<int32_t*>(ptr + Offsets::MainMenu::CURSOR_INDEX);
 }
 
-void MainMenuHandler::AnnounceCurrentItem()
+int16_t MainMenuHandler::ReadState(void* thisPtr)
 {
-    // TODO: Look up item name from game text tables
-    // Format: "name, description, N of M"
-    //
-    // Main menu items from csv_text/main_menu.csv:
-    //   ID 1 = "Organize"
-    //   ID 2 = "Items"
-    //   ID 3 = "Status"
-    //   ID 4 = "Options"
-    //   ID 5 = "Save/Load"
-    //
-    // For now, just log that we would announce
-    // (until we know the cursor offset)
+    auto* ptr = reinterpret_cast<uint8_t*>(thisPtr);
+    return *reinterpret_cast<int16_t*>(ptr + Offsets::MainMenu::STATE);
+}
+
+int32_t MainMenuHandler::ReadItemCount(void* thisPtr)
+{
+    auto* ptr = reinterpret_cast<uint8_t*>(thisPtr);
+    return *reinterpret_cast<int32_t*>(ptr + Offsets::MainMenu::ITEM_COUNT);
+}
+
+// === Text lookup ===
+
+std::string MainMenuHandler::LookupMenuItemText(int cursorIndex)
+{
+    if (!s_getTextTableManager || !s_lookupText) {
+        return "item " + std::to_string(cursorIndex + 1);
+    }
+
+    uintptr_t base = reinterpret_cast<uintptr_t>(getBaseOffset());
+
+    // Get language index from the language settings singleton
+    unsigned int language = 1; // Default to English
+    uintptr_t langSettings = *reinterpret_cast<uintptr_t*>(
+        base + Offsets::Text::DAT_LanguageSettings);
+    if (langSettings != 0) {
+        language = *reinterpret_cast<unsigned int*>(
+            langSettings + Offsets::Text::LANGUAGE_INDEX_OFFSET);
+    }
+
+    // Get text table manager
+    void* manager = s_getTextTableManager();
+    if (!manager) {
+        Logger_Log("MainMenu", "GetTextTableManager returned null");
+        return "item " + std::to_string(cursorIndex + 1);
+    }
+
+    // Lookup: main_menu.mbe, ID = cursor + 1 (IDs are 1-based)
+    const char* text = s_lookupText(manager, "main_menu", cursorIndex + 1, language);
+    if (text && text[0] != '\0') {
+        return std::string(text);
+    }
+
+    Logger_Log("MainMenu", "LookupText returned null/empty for main_menu ID %d", cursorIndex + 1);
+    return "item " + std::to_string(cursorIndex + 1);
+}
+
+// === State change detection and announcements ===
+
+void MainMenuHandler::CheckStateChanges(void* thisPtr)
+{
+    int16_t state = ReadState(thisPtr);
+    int32_t cursor = ReadCursor(thisPtr);
+    int32_t itemCount = ReadItemCount(thisPtr);
+
+    // Clamp cursor to valid range
+    if (itemCount > 0 && itemCount <= 8) {
+        cursor = cursor % itemCount;
+    }
+
+    // Detect menu becoming active (state transitions to 3 = interactive)
+    // States: 0=closed?, 1=opening?, 2=animating?, 3=interactive, 4=?, 5=closing?
+    if (state == 3 && m_lastState != 3) {
+        m_menuActive = true;
+        AnnounceMenuOpened(thisPtr);
+        m_lastCursorIndex = cursor;
+    }
+
+    // Detect menu closing
+    if (state != 3 && m_lastState == 3) {
+        m_menuActive = false;
+    }
+
+    // Detect cursor changes while menu is active
+    if (m_menuActive && cursor != m_lastCursorIndex && m_lastCursorIndex >= 0) {
+        AnnounceCurrentItem(thisPtr);
+    }
+
+    m_lastState = state;
+    m_lastCursorIndex = cursor;
+}
+
+void MainMenuHandler::AnnounceMenuOpened(void* thisPtr)
+{
+    int32_t cursor = ReadCursor(thisPtr);
+    int32_t itemCount = ReadItemCount(thisPtr);
+
+    // Look up the current item text
+    std::string itemText = LookupMenuItemText(cursor);
+
+    // Format: "itemName, N of M"
+    std::string announcement = itemText + ", " +
+        std::to_string(cursor + 1) + " of " + std::to_string(itemCount);
+
+    Logger_Log("MainMenu", "Menu opened, announcing: %s", announcement.c_str());
+    SpeechManager::Get()->Speak(announcement, true);
+}
+
+void MainMenuHandler::AnnounceCurrentItem(void* thisPtr)
+{
+    int32_t cursor = ReadCursor(thisPtr);
+    int32_t itemCount = ReadItemCount(thisPtr);
+
+    // Look up the current item text
+    std::string itemText = LookupMenuItemText(cursor);
+
+    // Format: "itemName, N of M"
+    std::string announcement = itemText + ", " +
+        std::to_string(cursor + 1) + " of " + std::to_string(itemCount);
+
+    Logger_Log("MainMenu", "Cursor moved, announcing: %s", announcement.c_str());
+    SpeechManager::Get()->Speak(announcement, true);
 }
