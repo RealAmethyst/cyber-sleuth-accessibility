@@ -8,6 +8,7 @@
 // Campaign names are hardcoded (pre-baked textures, same in all languages).
 
 #include "handlers/scenario_select_handler.h"
+#include "handlers/handler_utils.h"
 #include "text_capture.h"
 #include "memory_inspector.h"
 #include "speech_manager.h"
@@ -125,8 +126,7 @@ void ScenarioSelectHandler::OnFrameInner(void* thisPtr)
 
 int32_t ScenarioSelectHandler::ReadCursor(void* thisPtr)
 {
-    auto* ptr = reinterpret_cast<uint8_t*>(thisPtr);
-    int32_t cursor = *reinterpret_cast<int32_t*>(ptr + Offsets::ScenarioSelect::CURSOR_INDEX);
+    int32_t cursor = HandlerUtils::ReadMemory<int32_t>(thisPtr, Offsets::ScenarioSelect::CURSOR_INDEX);
 
     // Sanity: cursor should be 1-based, small positive
     if (cursor < 1 || cursor > 10) return -1;
@@ -135,10 +135,9 @@ int32_t ScenarioSelectHandler::ReadCursor(void* thisPtr)
 
 int32_t ScenarioSelectHandler::ReadItemId(void* thisPtr, int32_t cursor)
 {
-    auto* ptr = reinterpret_cast<uint8_t*>(thisPtr);
     uintptr_t offset = Offsets::ScenarioSelect::ITEM_ID_BASE +
                        static_cast<uintptr_t>(cursor - 1) * Offsets::ScenarioSelect::ITEM_ID_STRIDE;
-    return *reinterpret_cast<int32_t*>(ptr + offset);
+    return HandlerUtils::ReadMemory<int32_t>(thisPtr, offset);
 }
 
 // ============================================================
@@ -160,21 +159,12 @@ void ScenarioSelectHandler::AnnounceItem(int32_t cursor, void* thisPtr, bool int
     int32_t itemId = ReadItemId(thisPtr, cursor);
     const char* name = GetCampaignName(itemId);
 
-    std::string announcement;
-    if (name) {
-        announcement = std::string(name);
-    } else {
-        announcement = "Item " + std::to_string(cursor);
-    }
-
-    // Look up description text from game's text tables
+    std::string itemName = name ? std::string(name) : ("Item " + std::to_string(cursor));
     std::string desc = LookupDescription(itemId);
-    if (!desc.empty()) {
-        announcement += ", " + desc;
-    }
 
-    // Add position info
-    announcement += ", " + std::to_string(cursor) + " of " + std::to_string(m_itemCount);
+    // cursor is 1-based; FormatAnnouncementWithDesc expects 0-based
+    auto announcement = HandlerUtils::FormatAnnouncementWithDesc(
+        itemName, desc, cursor - 1, m_itemCount);
 
     Logger_Log("ScenarioSelect", "Cursor %d (itemId=%d, name='%s'), announcing: %s",
                cursor, itemId, name ? name : "?", announcement.c_str());

@@ -9,6 +9,7 @@
 //   Cursor moved in state 3:  Speak(item, true)
 
 #include "handlers/main_menu_handler.h"
+#include "handlers/handler_utils.h"
 #include "speech_manager.h"
 #include "game_text.h"
 #include "offsets.h"
@@ -77,20 +78,17 @@ void MainMenuHandler::OnFrameInner(void* thisPtr)
 
 int32_t MainMenuHandler::ReadCursor(void* thisPtr)
 {
-    auto* ptr = reinterpret_cast<uint8_t*>(thisPtr);
-    return *reinterpret_cast<int32_t*>(ptr + Offsets::MainMenu::CURSOR_INDEX);
+    return HandlerUtils::ReadMemory<int32_t>(thisPtr, Offsets::MainMenu::CURSOR_INDEX);
 }
 
 int16_t MainMenuHandler::ReadState(void* thisPtr)
 {
-    auto* ptr = reinterpret_cast<uint8_t*>(thisPtr);
-    return *reinterpret_cast<int16_t*>(ptr + Offsets::MainMenu::STATE);
+    return HandlerUtils::ReadMemory<int16_t>(thisPtr, Offsets::MainMenu::STATE);
 }
 
 int32_t MainMenuHandler::ReadItemCount(void* thisPtr)
 {
-    auto* ptr = reinterpret_cast<uint8_t*>(thisPtr);
-    return *reinterpret_cast<int32_t*>(ptr + Offsets::MainMenu::ITEM_COUNT);
+    return HandlerUtils::ReadMemory<int32_t>(thisPtr, Offsets::MainMenu::ITEM_COUNT);
 }
 
 // === Text lookup ===
@@ -110,8 +108,7 @@ void MainMenuHandler::AnnounceItem(void* thisPtr, bool interrupt)
     int32_t itemCount = ReadItemCount(thisPtr);
 
     std::string itemText = LookupMenuItemText(cursor);
-    std::string announcement = itemText + ", " +
-        std::to_string(cursor + 1) + " of " + std::to_string(itemCount);
+    auto announcement = HandlerUtils::FormatAnnouncement(itemText, cursor, itemCount);
 
     Logger_Log("MainMenu", "Announcing: %s (interrupt=%d)", announcement.c_str(), interrupt);
     SpeechManager::Get()->Speak(announcement, interrupt);

@@ -8,6 +8,7 @@
 //   Cursor moved in state 12:  Speak(item, true)
 
 #include "handlers/title_handler.h"
+#include "handlers/handler_utils.h"
 #include "speech_manager.h"
 #include "offsets.h"
 #include "logger.h"
@@ -99,20 +100,17 @@ void TitleHandler::OnFrameInner(void* thisPtr)
 
 uint32_t TitleHandler::ReadState(void* thisPtr)
 {
-    auto* ptr = reinterpret_cast<uint8_t*>(thisPtr);
-    return *reinterpret_cast<uint32_t*>(ptr + Offsets::Title::STATE);
+    return HandlerUtils::ReadMemory<uint32_t>(thisPtr, Offsets::Title::STATE);
 }
 
 int32_t TitleHandler::ReadCursor(void* thisPtr)
 {
-    auto* ptr = reinterpret_cast<uint8_t*>(thisPtr);
-    return *reinterpret_cast<int32_t*>(ptr + Offsets::Title::CURSOR_INDEX);
+    return HandlerUtils::ReadMemory<int32_t>(thisPtr, Offsets::Title::CURSOR_INDEX);
 }
 
 int32_t TitleHandler::ReadItemCount(void* thisPtr)
 {
-    auto* ptr = reinterpret_cast<uint8_t*>(thisPtr);
-    return *reinterpret_cast<int32_t*>(ptr + Offsets::Title::ITEM_COUNT);
+    return HandlerUtils::ReadMemory<int32_t>(thisPtr, Offsets::Title::ITEM_COUNT);
 }
 
 // ============================================================
@@ -132,8 +130,7 @@ void TitleHandler::AnnounceMenuOpened(void* thisPtr)
     SpeechManager::Get()->Speak("Title Menu", true);
 
     // 2. First item (queue): "name, N of M"
-    std::string announcement = std::string(itemText) + ", " +
-        std::to_string(cursor + 1) + " of " + std::to_string(itemCount);
+    auto announcement = HandlerUtils::FormatAnnouncement(itemText, cursor, itemCount);
     SpeechManager::Get()->Speak(announcement, false);
 }
 
@@ -144,8 +141,7 @@ void TitleHandler::AnnounceCurrentItem(void* thisPtr)
 
     const char* itemText = GetTitleMenuItem(cursor);
 
-    std::string announcement = std::string(itemText) + ", " +
-        std::to_string(cursor + 1) + " of " + std::to_string(itemCount);
+    auto announcement = HandlerUtils::FormatAnnouncement(itemText, cursor, itemCount);
 
     Logger_Log("Title", "Cursor moved, announcing: %s", announcement.c_str());
     SpeechManager::Get()->Speak(announcement, true);

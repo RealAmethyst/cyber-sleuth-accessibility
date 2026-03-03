@@ -9,6 +9,7 @@
 // at this+0x78 (Yes label) and this+0x7c (No label).
 
 #include "handlers/yesno_handler.h"
+#include "handlers/handler_utils.h"
 #include "text_capture.h"
 #include "speech_manager.h"
 #include "game_text.h"
@@ -89,14 +90,12 @@ void YesNoHandler::OnFrameInner(void* thisPtr)
 
 int32_t YesNoHandler::ReadState(void* thisPtr)
 {
-    auto* ptr = reinterpret_cast<uint8_t*>(thisPtr);
-    return *reinterpret_cast<int32_t*>(ptr + Offsets::YesNoWindow::STATE);
+    return HandlerUtils::ReadMemory<int32_t>(thisPtr, Offsets::YesNoWindow::STATE);
 }
 
 int32_t YesNoHandler::ReadResult(void* thisPtr)
 {
-    auto* ptr = reinterpret_cast<uint8_t*>(thisPtr);
-    return *reinterpret_cast<int32_t*>(ptr + Offsets::YesNoWindow::RESULT);
+    return HandlerUtils::ReadMemory<int32_t>(thisPtr, Offsets::YesNoWindow::RESULT);
 }
 
 int32_t YesNoHandler::ReadCursor(void* thisPtr)
@@ -180,8 +179,7 @@ void YesNoHandler::AnnounceCurrentOption(int32_t cursor)
 
     int totalOptions = 2;
 
-    std::string announcement = label + ", " +
-        std::to_string(cursor + 1) + " of " + std::to_string(totalOptions);
+    auto announcement = HandlerUtils::FormatAnnouncement(label, cursor, totalOptions);
 
     Logger_Log("YesNo", "Cursor: %d (label='%s'), announcing: %s",
                cursor, label.c_str(), announcement.c_str());
