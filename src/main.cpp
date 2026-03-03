@@ -14,6 +14,38 @@
 #include "text_capture.h"
 #include "game_text.h"
 
+#include <functional>
+#include <vector>
+
+// Handler entry: frame handler + optional install/uninstall callbacks.
+// Handlers without Install/Uninstall (e.g. MemoryInspector) use empty lambdas.
+struct HandlerEntry {
+    IFrameHandler* handler;
+    std::function<void()> install;
+    std::function<void()> uninstall;
+};
+
+// All handlers in registration order.
+// To add a new handler: add one line here. That's it.
+static std::vector<HandlerEntry> GetHandlers()
+{
+    return {
+        { MemoryInspector::Get(),        {}, {} },
+        { TextCapture::Get(),            [](){ TextCapture::Get()->Install(); },
+                                         [](){ TextCapture::Get()->Uninstall(); } },
+        { TitleHandler::Get(),           [](){ TitleHandler::Get()->Install(); },
+                                         [](){ TitleHandler::Get()->Uninstall(); } },
+        { MainMenuHandler::Get(),        [](){ MainMenuHandler::Get()->Install(); },
+                                         [](){ MainMenuHandler::Get()->Uninstall(); } },
+        { SubtitleHandler::Get(),        [](){ SubtitleHandler::Get()->Install(); },
+                                         [](){ SubtitleHandler::Get()->Uninstall(); } },
+        { YesNoHandler::Get(),           [](){ YesNoHandler::Get()->Install(); },
+                                         [](){ YesNoHandler::Get()->Uninstall(); } },
+        { ScenarioSelectHandler::Get(),  [](){ ScenarioSelectHandler::Get()->Install(); },
+                                         [](){ ScenarioSelectHandler::Get()->Uninstall(); } },
+    };
+}
+
 class CyberSleuthAccessibility : public BasePlugin
 {
 public:
@@ -26,7 +58,7 @@ public:
 void CyberSleuthAccessibility::onEnable()
 {
     Logger_Init();
-    Logger_Log("Main", "Plugin onEnable — v0.11.0 (ScenarioSelectHandler)");
+    Logger_Log("Main", "Plugin onEnable — v0.11.0");
 
     auto* speech = SpeechManager::Get();
     if (speech->Initialize()) {
@@ -41,68 +73,27 @@ void CyberSleuthAccessibility::onEnable()
         return;
     }
 
-    // Initialize shared text lookup utility (must be after hooks_init so module base is valid)
     GameText_Init();
 
-    // Register MemoryInspector for F5 hotkey polling
-    RegisterFrameHandler(MemoryInspector::Get());
+    auto handlers = GetHandlers();
+    for (auto& entry : handlers) {
+        if (entry.install) entry.install();
+        RegisterFrameHandler(entry.handler);
+    }
 
-    // Install TitleHandler — hooks CUiTitle tick via MinHook,
-    // tracks state (+0xa8) and cursor (+0x114) for title menu.
-    TitleHandler::Get()->Install();
-    RegisterFrameHandler(TitleHandler::Get());
-
-    // Install MainMenuHandler — hooks CUiMainMenu tick via MinHook,
-    // reads cursor from this+0x27D8, announces menu items via text API.
-    MainMenuHandler::Get()->Install();
-    RegisterFrameHandler(MainMenuHandler::Get());
-
-    // Install TextCapture — hooks LookupText to capture all text the game
-    // fetches from MBE tables (subtitles, dialogs, info messages, etc.).
-    TextCapture::Get()->Install();
-    RegisterFrameHandler(TextCapture::Get());
-
-    // Install SubtitleHandler — polls Vista singleton for subtitle player,
-    // reads elapsed time + schedule, speaks active subtitle line.
-    SubtitleHandler::Get()->Install();
-    RegisterFrameHandler(SubtitleHandler::Get());
-
-    // Install YesNoHandler — hooks CUiYesNoWindow tick via MinHook,
-    // reads state + cursor, announces dialog message and selection.
-    YesNoHandler::Get()->Install();
-    RegisterFrameHandler(YesNoHandler::Get());
-
-    // Install ScenarioSelectHandler — hooks CUiScenarioSelect tick via MinHook,
-    // uses TextCapture for campaign descriptions and prompt text.
-    ScenarioSelectHandler::Get()->Install();
-    RegisterFrameHandler(ScenarioSelectHandler::Get());
-
-    Logger_Log("Main", "Plugin startup complete. Press F5 to dump active CUi memory.");
+    Logger_Log("Main", "Plugin startup complete — %zu handlers active.", handlers.size());
 }
 
 void CyberSleuthAccessibility::onDisable()
 {
     Logger_Log("Main", "Plugin onDisable");
 
-    UnregisterFrameHandler(ScenarioSelectHandler::Get());
-    ScenarioSelectHandler::Get()->Uninstall();
-
-    UnregisterFrameHandler(YesNoHandler::Get());
-    YesNoHandler::Get()->Uninstall();
-
-    UnregisterFrameHandler(SubtitleHandler::Get());
-    SubtitleHandler::Get()->Uninstall();
-
-    UnregisterFrameHandler(TextCapture::Get());
-    TextCapture::Get()->Uninstall();
-
-    UnregisterFrameHandler(MainMenuHandler::Get());
-    MainMenuHandler::Get()->Uninstall();
-
-    UnregisterFrameHandler(TitleHandler::Get());
-    TitleHandler::Get()->Uninstall();
-
-    UnregisterFrameHandler(MemoryInspector::Get());
+    // Unregister in reverse order
+    auto handlers = GetHandlers();
+    for (auto it = handlers.rbegin(); it != handlers.rend(); ++it) {
+        UnregisterFrameHandler(it->handler);
+        if (it->uninstall) it->uninstall();
+    }
 
     hooks_shutdown();
     SpeechManager::Get()->Shutdown();
