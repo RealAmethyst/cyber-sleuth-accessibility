@@ -70,12 +70,24 @@ public:
     // Clear cached subtitle texts (call when subtitle player is destroyed)
     void ClearSubtitleTexts();
 
+    // Latest yes_no_message lookup — cached when the game looks up dialog text.
+    // YesNoHandler reads this to know what message the dialog is showing.
+    struct YesNoEvent {
+        int rowId = 0;
+        std::string message;
+    };
+    YesNoEvent ConsumeYesNoMessage();  // Returns and clears the cached message
+
 private:
     TextCapture() = default;
 
     // Subtitle text entries captured during bulk load, in order
     mutable std::mutex m_subtitleMutex;
     std::vector<SubtitleTextEntry> m_subtitleTexts;
+
+    // Latest yes_no_message lookup
+    mutable std::mutex m_yesNoMutex;
+    YesNoEvent m_latestYesNo;
 
     bool m_installed = false;
 

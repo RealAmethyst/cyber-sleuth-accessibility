@@ -56,6 +56,7 @@ add_library(CyberSleuthAccessibility SHARED
   src/handlers/main_menu_handler.cpp
   src/handlers/title_handler.cpp
   src/handlers/subtitle_handler.cpp
+  src/handlers/yesno_handler.cpp
 )
 
 target_include_directories(CyberSleuthAccessibility PRIVATE include)

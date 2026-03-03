@@ -104,6 +104,13 @@ const char* __fastcall TextCapture::HookedLookupText(
         entry.rowId = rowId;
         entry.text = (result && result[0] != '\0') ? result : "";
 
+        // Cache yes_no_message entries for YesNoHandler
+        if (entry.tableName == "yes_no_message" && !entry.text.empty()) {
+            auto* self = TextCapture::Get();
+            std::lock_guard<std::mutex> lock(self->m_yesNoMutex);
+            self->m_latestYesNo = {rowId, entry.text};
+        }
+
         // Capture subtitle_text entries in order for SubtitleHandler
         if (entry.tableName == "subtitle_text" && !entry.text.empty()) {
             auto* self = TextCapture::Get();
@@ -139,6 +146,14 @@ void TextCapture::ClearSubtitleTexts()
 {
     std::lock_guard<std::mutex> lock(m_subtitleMutex);
     m_subtitleTexts.clear();
+}
+
+TextCapture::YesNoEvent TextCapture::ConsumeYesNoMessage()
+{
+    std::lock_guard<std::mutex> lock(m_yesNoMutex);
+    YesNoEvent event = std::move(m_latestYesNo);
+    m_latestYesNo = {};
+    return event;
 }
 
 // ============================================================

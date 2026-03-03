@@ -137,6 +137,7 @@ constexpr uintptr_t VTABLE_CUiMedalList       = 0xaaeaa0;
 // Signature: void __fastcall tick(void* thisPtr, void* param2)
 constexpr uintptr_t FUNC_CUiTitle_Tick        = 0x4CC2F0;
 constexpr uintptr_t FUNC_CUiMainMenu_Tick     = 0x4B6270;
+constexpr uintptr_t FUNC_CUiYesNoWindow_Tick  = 0x426C90;
 
 // Old vtable[2] cleanup/teardown RVAs (NOT per-frame — only fire on transitions)
 constexpr uintptr_t FUNC_CUiTitle_Cleanup     = 0x4CC160;
@@ -170,6 +171,24 @@ namespace Title {
     constexpr uintptr_t CURSOR_INDEX    = 0x114;  // int32, 0-3
     constexpr uintptr_t PREV_CURSOR     = 0x118;  // int32, previous cursor
     constexpr uintptr_t ITEM_COUNT      = 0x124;  // int32, max selectable items
+}
+
+// === CUiYesNoWindow member offsets (from Ghidra decompilation of tick + message handler) ===
+// Tick: RVA 0x426c90 (365 bytes), message handler: RVA 0x426e50
+// State machine: 0=idle, 1=ready, 2=opening, 3=opening-anim, 4=interactive, 5=closing, 6=done
+// Result: 1=Yes, 2=No, 3=Cancel (read by Squirrel GetResultYesNoInfo)
+namespace YesNoWindow {
+    constexpr uintptr_t STATE           = 0x0C;   // int32, state machine
+    constexpr uintptr_t ACTIVE_WINDOW   = 0x40;   // ptr, active window widget
+    constexpr uintptr_t ACTIVE_YES_CUR  = 0x48;   // ptr, Yes cursor widget
+    constexpr uintptr_t ACTIVE_NO_CUR   = 0x50;   // ptr, No cursor widget
+    constexpr uintptr_t STYLE_TYPE      = 0x58;   // int32, 1=info, 2=system
+    constexpr uintptr_t YES_TEXT_ID     = 0x78;   // int32, common_message ID for Yes label (usually 2100)
+    constexpr uintptr_t NO_TEXT_ID      = 0x7C;   // int32, common_message ID for No label (usually 2101)
+    constexpr uintptr_t CANCEL_ENABLED  = 0x80;   // byte, cancel button available
+    constexpr uintptr_t CURSOR_INDEX    = 0x81;   // byte, 0=Yes, 1=No (confirmed via memory dump)
+    constexpr uintptr_t RESULT          = 0x84;   // int32, 0=none, 1=Yes, 2=No, 3=Cancel
+    constexpr uintptr_t ACTIVE_FLAG     = 0x88;   // byte, visible/active
 }
 
 // === Text system RVAs ===

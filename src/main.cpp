@@ -9,6 +9,7 @@
 #include "handlers/main_menu_handler.h"
 #include "handlers/title_handler.h"
 #include "handlers/subtitle_handler.h"
+#include "handlers/yesno_handler.h"
 #include "text_capture.h"
 
 class CyberSleuthAccessibility : public BasePlugin
@@ -23,7 +24,7 @@ public:
 void CyberSleuthAccessibility::onEnable()
 {
     Logger_Init();
-    Logger_Log("Main", "Plugin onEnable — v0.9.0 (SubtitleHandler)");
+    Logger_Log("Main", "Plugin onEnable — v0.10.0 (YesNoHandler)");
 
     auto* speech = SpeechManager::Get();
     if (speech->Initialize()) {
@@ -61,12 +62,20 @@ void CyberSleuthAccessibility::onEnable()
     SubtitleHandler::Get()->Install();
     RegisterFrameHandler(SubtitleHandler::Get());
 
+    // Install YesNoHandler — hooks CUiYesNoWindow tick via MinHook,
+    // reads state + cursor, announces dialog message and selection.
+    YesNoHandler::Get()->Install();
+    RegisterFrameHandler(YesNoHandler::Get());
+
     Logger_Log("Main", "Plugin startup complete. Press F5 to dump active CUi memory.");
 }
 
 void CyberSleuthAccessibility::onDisable()
 {
     Logger_Log("Main", "Plugin onDisable");
+
+    UnregisterFrameHandler(YesNoHandler::Get());
+    YesNoHandler::Get()->Uninstall();
 
     UnregisterFrameHandler(SubtitleHandler::Get());
     SubtitleHandler::Get()->Uninstall();
