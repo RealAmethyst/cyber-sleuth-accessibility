@@ -51,6 +51,7 @@ private:
 
     // Tick detour stores this pointer atomically — OnFrame reads it.
     static inline std::atomic<void*> s_thisPtr{nullptr};
+    static inline std::atomic<bool> s_tickFired{false};
 
     // Original tick function pointer
     using TickFunc = void(__fastcall*)(void* thisPtr, void* param2);

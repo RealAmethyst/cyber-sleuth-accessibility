@@ -97,6 +97,7 @@ void TitleHandler::Uninstall()
     s_originalTick = nullptr;
     s_hookTarget = nullptr;
     s_thisPtr.store(nullptr, std::memory_order_relaxed);
+    s_tickFired.store(false, std::memory_order_relaxed);
     m_lastCursorIndex = -1;
     m_lastState = 0xFFFFFFFF;
     m_menuActive = false;
@@ -120,6 +121,7 @@ void __fastcall TitleHandler::HookedTick(void* thisPtr, void* param2)
     // Store this pointer for OnFrame to use. That's ALL we do here.
     if (thisPtr) {
         s_thisPtr.store(thisPtr, std::memory_order_relaxed);
+        s_tickFired.store(true, std::memory_order_relaxed);
     }
 }
 
@@ -141,6 +143,18 @@ static void OnFrameSEH(TitleHandler* handler, void* thisPtr)
 
 void TitleHandler::OnFrame()
 {
+    bool tickFired = s_tickFired.exchange(false, std::memory_order_relaxed);
+
+    if (!tickFired) {
+        if (m_menuActive) {
+            Logger_Log("Title", "Screen closed (tick stopped firing)");
+            m_menuActive = false;
+            m_lastState = 0xFFFFFFFF;
+            m_lastCursorIndex = -1;
+        }
+        return;
+    }
+
     void* thisPtr = s_thisPtr.load(std::memory_order_relaxed);
     if (!thisPtr) return;
 

@@ -63,12 +63,15 @@ static BOOL WINAPI hooked_SwapBuffers(HDC hdc)
     // Flush queued speech from hook contexts (tick detours etc.)
     SpeechManager::Get()->Flush();
 
-    // Dispatch to all registered handlers
+    // Snapshot handler list under lock, then dispatch without holding it.
+    // This prevents deadlock if a handler calls Register/Unregister during OnFrame.
+    std::vector<IFrameHandler*> snapshot;
     {
         std::lock_guard<std::mutex> lock(g_handlerMutex);
-        for (auto* handler : g_handlers) {
-            handler->OnFrame();
-        }
+        snapshot = g_handlers;
+    }
+    for (auto* handler : snapshot) {
+        handler->OnFrame();
     }
 
     return g_origSwapBuffers(hdc);
