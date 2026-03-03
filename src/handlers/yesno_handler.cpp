@@ -208,8 +208,8 @@ int32_t YesNoHandler::ReadCursor(void* thisPtr)
     auto* ptr = reinterpret_cast<uint8_t*>(thisPtr);
     uint8_t cursor = *(ptr + Offsets::YesNoWindow::CURSOR_INDEX);
 
-    // Sanity check — cursor should be 0 (Yes) or 1 (No)
-    if (cursor > 2) return -1;
+    // Sanity check — cursor should be 0 (No/bottom) or 1 (Yes/top)
+    if (cursor > 1) return -1;
 
     return static_cast<int32_t>(cursor);
 }

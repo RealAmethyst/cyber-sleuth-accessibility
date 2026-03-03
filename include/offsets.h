@@ -197,7 +197,7 @@ namespace YesNoWindow {
     constexpr uintptr_t YES_TEXT_ID     = 0x78;   // int32, common_message ID for Yes label (usually 2100)
     constexpr uintptr_t NO_TEXT_ID      = 0x7C;   // int32, common_message ID for No label (usually 2101)
     constexpr uintptr_t CANCEL_ENABLED  = 0x80;   // byte, cancel button available
-    constexpr uintptr_t CURSOR_INDEX    = 0x81;   // byte, 0=Yes, 1=No (confirmed via memory dump)
+    constexpr uintptr_t CURSOR_INDEX    = 0x81;   // byte, 0=No (bottom), 1=Yes (top) — Japanese UI convention
     constexpr uintptr_t RESULT          = 0x84;   // int32, 0=none, 1=Yes, 2=No, 3=Cancel
     constexpr uintptr_t ACTIVE_FLAG     = 0x88;   // byte, visible/active
 }

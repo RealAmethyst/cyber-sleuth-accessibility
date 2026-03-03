@@ -113,7 +113,7 @@ const PluginInfo CyberSleuthAccessibility::getPluginInfo()
 {
     PluginInfo info;
     info.apiVersion = {0, 0, 0};
-    info.version    = {0, 8, 0};
+    info.version    = {0, 11, 0};
     info.name       = "Cyber Sleuth Accessibility";
     return info;
 }

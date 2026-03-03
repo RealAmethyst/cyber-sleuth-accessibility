@@ -86,9 +86,11 @@ int SubtitleHandler::GetCueIndex() const
     __try {
         auto* base = reinterpret_cast<uint8_t*>(loader);
         auto begin = *reinterpret_cast<intptr_t*>(base + Offsets::Vista::Loader::VECTOR_BEGIN);
+        auto end   = *reinterpret_cast<intptr_t*>(base + Offsets::Vista::Loader::VECTOR_END);
         auto cursor = *reinterpret_cast<intptr_t*>(base + Offsets::Vista::Loader::CURSOR);
 
         if (begin == 0 || cursor == 0 || cursor < begin) return -1;
+        if (end != 0 && cursor >= end) return -1;
 
         return static_cast<int>((cursor - begin) / 8);
     } __except(EXCEPTION_EXECUTE_HANDLER) {
