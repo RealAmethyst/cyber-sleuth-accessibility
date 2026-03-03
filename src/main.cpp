@@ -12,6 +12,7 @@
 #include "handlers/yesno_handler.h"
 #include "handlers/scenario_select_handler.h"
 #include "text_capture.h"
+#include "game_text.h"
 
 class CyberSleuthAccessibility : public BasePlugin
 {
@@ -39,6 +40,9 @@ void CyberSleuthAccessibility::onEnable()
         speech->Speak("Warning: hook initialization failed", true);
         return;
     }
+
+    // Initialize shared text lookup utility (must be after hooks_init so module base is valid)
+    GameText_Init();
 
     // Register MemoryInspector for F5 hotkey polling
     RegisterFrameHandler(MemoryInspector::Get());

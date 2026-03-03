@@ -15,6 +15,7 @@
 #include "text_capture.h"
 #include "memory_inspector.h"
 #include "speech_manager.h"
+#include "game_text.h"
 #include "offsets.h"
 #include "logger.h"
 
@@ -50,15 +51,6 @@ void YesNoHandler::Install()
     if (m_installed) return;
 
     uintptr_t base = reinterpret_cast<uintptr_t>(getBaseOffset());
-
-    // Resolve text API function pointers
-    s_getTextTableManager = reinterpret_cast<GetTextTableManagerFunc>(
-        base + Offsets::Text::FUNC_GetTextTableManager);
-    s_lookupText = reinterpret_cast<LookupTextFunc>(
-        base + Offsets::Text::FUNC_LookupText);
-
-    Logger_Log("YesNo", "Text API resolved: GetTextTableManager=%p, LookupText=%p",
-               (void*)s_getTextTableManager, (void*)s_lookupText);
 
     s_hookTarget = reinterpret_cast<void*>(base + Offsets::FUNC_CUiYesNoWindow_Tick);
 
@@ -238,29 +230,8 @@ int32_t YesNoHandler::ReadCursor(void* thisPtr)
 
 std::string YesNoHandler::LookupButtonLabel(int32_t commonMessageId)
 {
-    if (!s_getTextTableManager || !s_lookupText || commonMessageId <= 0) {
-        return "";
-    }
-
-    uintptr_t base = reinterpret_cast<uintptr_t>(getBaseOffset());
-
-    // Get language index
-    unsigned int language = 1; // Default English
-    uintptr_t langSettings = *reinterpret_cast<uintptr_t*>(
-        base + Offsets::Text::DAT_LanguageSettings);
-    if (langSettings != 0) {
-        language = *reinterpret_cast<unsigned int*>(
-            langSettings + Offsets::Text::LANGUAGE_INDEX_OFFSET);
-    }
-
-    void* manager = s_getTextTableManager();
-    if (!manager) return "";
-
-    const char* text = s_lookupText(manager, "common_message", commonMessageId, language);
-    if (text && text[0] != '\0') {
-        return std::string(text);
-    }
-    return "";
+    if (commonMessageId <= 0) return "";
+    return GameText_Lookup("common_message", commonMessageId);
 }
 
 // ============================================================

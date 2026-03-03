@@ -51,14 +51,6 @@ private:
     static inline TickFunc s_originalTick = nullptr;
     static inline void* s_hookTarget = nullptr;
 
-    // Game function pointers (resolved once at install)
-    using GetTextTableManagerFunc = void* (__fastcall*)();
-    using LookupTextFunc = const char* (__fastcall*)(void* manager, const char* tableName,
-                                                      int rowId, unsigned int language);
-
-    static inline GetTextTableManagerFunc s_getTextTableManager = nullptr;
-    static inline LookupTextFunc s_lookupText = nullptr;
-
     // Our hooked tick function — MINIMAL, only captures this pointer
     static void __fastcall HookedTick(void* thisPtr, void* param2);
 

@@ -1,4 +1,5 @@
 #include "speech_manager.h"
+#include "plugin_util.h"
 #include "logger.h"
 
 #include <SRAL.h>
@@ -27,30 +28,10 @@ bool SpeechManager::Initialize()
     }
 
     // Open speech log next to our DLL
-    HMODULE hSelf = nullptr;
-    GetModuleHandleExA(
-        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-        (LPCSTR)&SpeechManager::Get,
-        &hSelf);
-
-    char dllPath[MAX_PATH] = {};
-    if (hSelf) GetModuleFileNameA(hSelf, dllPath, MAX_PATH);
-
-    char logPath[MAX_PATH] = {};
-    if (dllPath[0]) {
-        char* lastSlash = strrchr(dllPath, '\\');
-        if (lastSlash) {
-            *(lastSlash + 1) = '\0';
-            snprintf(logPath, MAX_PATH, "%sCyberSleuth_speech.log", dllPath);
-        }
-    }
-    if (!logPath[0]) {
-        snprintf(logPath, MAX_PATH, "CyberSleuth_speech.log");
-    }
-
-    m_speechLog = fopen(logPath, "w");
+    std::string logPath = GetPluginDir() + "CyberSleuth_speech.log";
+    m_speechLog = fopen(logPath.c_str(), "w");
     if (m_speechLog) {
-        Logger_Log("Speech", "Speech log opened: %s", logPath);
+        Logger_Log("Speech", "Speech log opened: %s", logPath.c_str());
     }
 
     int engine = SRAL_GetCurrentEngine();

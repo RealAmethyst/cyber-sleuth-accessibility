@@ -4,6 +4,7 @@
 // positions, diff them, and the offset that changed by 1 is the cursor index.
 
 #include "memory_inspector.h"
+#include "plugin_util.h"
 #include "speech_manager.h"
 #include "logger.h"
 
@@ -49,20 +50,7 @@ void MemoryInspector::DumpAllPointers()
         return;
     }
 
-    // Build log path next to our DLL
-    char dllPath[MAX_PATH] = {};
-    HMODULE hSelf = nullptr;
-    GetModuleHandleExA(
-        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-        GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-        (LPCSTR)&MemoryInspector::Get, &hSelf);
-    GetModuleFileNameA(hSelf, dllPath, MAX_PATH);
-
-    std::string logPath(dllPath);
-    auto pos = logPath.find_last_of("\\/");
-    if (pos != std::string::npos)
-        logPath = logPath.substr(0, pos + 1);
-    logPath += "CyberSleuth_memdump.log";
+    std::string logPath = GetPluginDir() + "CyberSleuth_memdump.log";
 
     FILE* fp = fopen(logPath.c_str(), "a");
     if (!fp) {

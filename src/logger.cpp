@@ -1,4 +1,5 @@
 #include "logger.h"
+#include "plugin_util.h"
 #include <windows.h>
 #include <cstdio>
 #include <cstdarg>
@@ -14,38 +15,12 @@ void Logger_Init()
     InitializeCriticalSection(&g_logLock);
     g_lockInit = true;
 
-    // Find our DLL's directory
-    HMODULE hSelf = nullptr;
-    GetModuleHandleExA(
-        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-        (LPCSTR)&Logger_Init,
-        &hSelf);
-
-    char dllPath[MAX_PATH] = {};
-    if (hSelf) {
-        GetModuleFileNameA(hSelf, dllPath, MAX_PATH);
-    }
-
-    // Strip filename, append our log filename
-    char logPath[MAX_PATH] = {};
-    if (dllPath[0]) {
-        char* lastSlash = strrchr(dllPath, '\\');
-        if (lastSlash) {
-            *(lastSlash + 1) = '\0';
-            snprintf(logPath, MAX_PATH, "%sCyberSleuthAccessibility.log", dllPath);
-        }
-    }
-
-    // Fallback: write to current directory
-    if (!logPath[0]) {
-        snprintf(logPath, MAX_PATH, "CyberSleuthAccessibility.log");
-    }
+    std::string logPath = GetPluginDir() + "CyberSleuthAccessibility.log";
 
     // Truncate on each launch (fresh log per session)
-    g_logFile = fopen(logPath, "w");
+    g_logFile = fopen(logPath.c_str(), "w");
     if (g_logFile) {
-        // Write BOM-less UTF-8 header
-        Logger_Log("Init", "Log opened: %s", logPath);
+        Logger_Log("Init", "Log opened: %s", logPath.c_str());
     }
 }
 

@@ -6,6 +6,7 @@
 
 #include "handlers/subtitle_handler.h"
 #include "speech_manager.h"
+#include "game_text.h"
 #include "offsets.h"
 #include "logger.h"
 
@@ -32,9 +33,6 @@ void SubtitleHandler::Install()
 
     m_moduleBase = reinterpret_cast<uintptr_t>(getBaseOffset());
 
-    // Cache the LookupText function address (hooked by TextCapture, which is fine)
-    m_lookupText = reinterpret_cast<LookupTextFn>(m_moduleBase + Offsets::Text::FUNC_LookupText);
-
     m_installed = true;
     Logger_Log("Subtitle", "SubtitleHandler installed — polling loader at DAT 0x%llx",
                (unsigned long long)Offsets::Vista::DAT_SubtitleLoader);
@@ -47,7 +45,6 @@ void SubtitleHandler::Uninstall()
     m_wasPlaying = false;
     m_lastCueIndex = -1;
     m_lastSpokenText.clear();
-    m_lookupText = nullptr;
 
     m_installed = false;
     Logger_Log("Subtitle", "SubtitleHandler uninstalled");
@@ -126,24 +123,14 @@ int SubtitleHandler::GetCueTextId(int cueIndex) const
 
 const char* SubtitleHandler::LookupSubtitleText(int textId) const
 {
-    if (!m_lookupText || textId < 0) return nullptr;
+    if (textId < 0) return nullptr;
 
-    __try {
-        // Get text table manager singleton
-        auto* manager = *reinterpret_cast<void**>(m_moduleBase + Offsets::Text::DAT_TextTableManager);
-        if (!manager) return nullptr;
-
-        // Get current language
-        auto* langSettings = *reinterpret_cast<uint8_t**>(
-            m_moduleBase + Offsets::Text::DAT_LanguageSettings);
-        if (!langSettings) return nullptr;
-        unsigned int language = *reinterpret_cast<unsigned int*>(
-            langSettings + Offsets::Text::LANGUAGE_INDEX_OFFSET);
-
-        return m_lookupText(manager, "subtitle_text", textId, language);
-    } __except(EXCEPTION_EXECUTE_HANDLER) {
-        return nullptr;
-    }
+    // GameText_Lookup returns std::string — we need a stable pointer.
+    // Use a thread-local buffer since OnFrame runs on the SwapBuffers thread only.
+    static thread_local std::string s_buf;
+    s_buf = GameText_Lookup("subtitle_text", textId);
+    if (s_buf.empty()) return nullptr;
+    return s_buf.c_str();
 }
 
 // ============================================================

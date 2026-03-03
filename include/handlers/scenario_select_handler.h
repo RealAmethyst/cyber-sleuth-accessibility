@@ -59,13 +59,6 @@ private:
 
     static void __fastcall HookedTick(void* thisPtr, void* param2);
 
-    // Text API function pointers (resolved once in Install)
-    using GetTextTableManagerFunc = void* (*)();
-    using LookupTextFunc = const char* (*)(void* manager, const char* tableName,
-                                           int rowId, unsigned int language);
-    static inline GetTextTableManagerFunc s_getTextTableManager = nullptr;
-    static inline LookupTextFunc s_lookupText = nullptr;
-
     // State reading
     static int32_t ReadCursor(void* thisPtr);
     static int32_t ReadItemId(void* thisPtr, int32_t cursor);

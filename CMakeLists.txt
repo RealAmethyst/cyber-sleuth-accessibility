@@ -50,6 +50,8 @@ add_library(CyberSleuthAccessibility SHARED
   src/logger.cpp
   src/speech_manager.cpp
   src/hooks.cpp
+  src/plugin_util.cpp
+  src/game_text.cpp
   src/memory_inspector.cpp
   src/ui_probe.cpp
   src/text_capture.cpp

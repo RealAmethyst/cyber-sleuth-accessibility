@@ -14,6 +14,7 @@
 #include "text_capture.h"
 #include "memory_inspector.h"
 #include "speech_manager.h"
+#include "game_text.h"
 #include "offsets.h"
 #include "logger.h"
 
@@ -53,12 +54,6 @@ void ScenarioSelectHandler::Install()
     if (m_installed) return;
 
     uintptr_t base = reinterpret_cast<uintptr_t>(getBaseOffset());
-
-    // Resolve text API function pointers
-    s_getTextTableManager = reinterpret_cast<GetTextTableManagerFunc>(
-        base + Offsets::Text::FUNC_GetTextTableManager);
-    s_lookupText = reinterpret_cast<LookupTextFunc>(
-        base + Offsets::Text::FUNC_LookupText);
 
     s_hookTarget = reinterpret_cast<void*>(base + Offsets::FUNC_CUiScenarioSelect_Tick);
 
@@ -227,28 +222,8 @@ int32_t ScenarioSelectHandler::ReadItemId(void* thisPtr, int32_t cursor)
 
 std::string ScenarioSelectHandler::LookupDescription(int rowId)
 {
-    if (!s_getTextTableManager || !s_lookupText || rowId <= 0) {
-        return "";
-    }
-
-    uintptr_t base = reinterpret_cast<uintptr_t>(getBaseOffset());
-
-    unsigned int language = 1; // Default English
-    uintptr_t langSettings = *reinterpret_cast<uintptr_t*>(
-        base + Offsets::Text::DAT_LanguageSettings);
-    if (langSettings != 0) {
-        language = *reinterpret_cast<unsigned int*>(
-            langSettings + Offsets::Text::LANGUAGE_INDEX_OFFSET);
-    }
-
-    void* manager = s_getTextTableManager();
-    if (!manager) return "";
-
-    const char* text = s_lookupText(manager, "scenario_select", rowId, language);
-    if (text && text[0] != '\0') {
-        return std::string(text);
-    }
-    return "";
+    if (rowId <= 0) return "";
+    return GameText_Lookup("scenario_select", rowId);
 }
 
 // ============================================================

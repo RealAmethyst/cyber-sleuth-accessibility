@@ -14,6 +14,7 @@
 #include "handlers/main_menu_handler.h"
 #include "memory_inspector.h"
 #include "speech_manager.h"
+#include "game_text.h"
 #include "offsets.h"
 #include "logger.h"
 
@@ -46,15 +47,6 @@ void MainMenuHandler::Install()
     if (m_installed) return;
 
     uintptr_t base = reinterpret_cast<uintptr_t>(getBaseOffset());
-
-    // Resolve text API function pointers
-    s_getTextTableManager = reinterpret_cast<GetTextTableManagerFunc>(
-        base + Offsets::Text::FUNC_GetTextTableManager);
-    s_lookupText = reinterpret_cast<LookupTextFunc>(
-        base + Offsets::Text::FUNC_LookupText);
-
-    Logger_Log("MainMenu", "Text API resolved: GetTextTableManager=%p, LookupText=%p",
-               (void*)s_getTextTableManager, (void*)s_lookupText);
 
     // Hook CUiMainMenu's tick function via MinHook
     s_hookTarget = reinterpret_cast<void*>(base + Offsets::FUNC_CUiMainMenu_Tick);
@@ -202,32 +194,9 @@ int32_t MainMenuHandler::ReadItemCount(void* thisPtr)
 
 std::string MainMenuHandler::LookupMenuItemText(int cursorIndex)
 {
-    if (!s_getTextTableManager || !s_lookupText) {
-        return "item " + std::to_string(cursorIndex + 1);
-    }
-
-    uintptr_t base = reinterpret_cast<uintptr_t>(getBaseOffset());
-
-    // Get language index from the language settings singleton
-    unsigned int language = 1; // Default to English
-    uintptr_t langSettings = *reinterpret_cast<uintptr_t*>(
-        base + Offsets::Text::DAT_LanguageSettings);
-    if (langSettings != 0) {
-        language = *reinterpret_cast<unsigned int*>(
-            langSettings + Offsets::Text::LANGUAGE_INDEX_OFFSET);
-    }
-
-    void* manager = s_getTextTableManager();
-    if (!manager) {
-        return "item " + std::to_string(cursorIndex + 1);
-    }
-
     // main_menu.mbe IDs are 1-based (cursor + 1)
-    const char* text = s_lookupText(manager, "main_menu", cursorIndex + 1, language);
-    if (text && text[0] != '\0') {
-        return std::string(text);
-    }
-
+    std::string text = GameText_Lookup("main_menu", cursorIndex + 1);
+    if (!text.empty()) return text;
     return "item " + std::to_string(cursorIndex + 1);
 }
 

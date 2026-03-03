@@ -44,11 +44,6 @@ private:
     int m_lastCueIndex = -1;        // Last spoken cue index
     std::string m_lastSpokenText;   // Dedup (same text across frames)
 
-    // LookupText function pointer (cached)
-    using LookupTextFn = const char* (__fastcall*)(
-        void* manager, const char* tableName, int rowId, unsigned int language);
-    LookupTextFn m_lookupText = nullptr;
-
     // Helpers — all protected with SEH
     void* GetLoader() const;
     int GetLoaderState() const;
