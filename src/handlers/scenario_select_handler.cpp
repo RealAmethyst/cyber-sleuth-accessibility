@@ -162,9 +162,9 @@ void ScenarioSelectHandler::AnnounceItem(int32_t cursor, void* thisPtr, bool int
     std::string itemName = name ? std::string(name) : ("Item " + std::to_string(cursor));
     std::string desc = LookupDescription(itemId);
 
-    // cursor is 1-based; FormatAnnouncementWithDesc expects 0-based
+    // Visual order is right-to-left: cursor 2 (right) = "1 of 2", cursor 1 (left) = "2 of 2"
     auto announcement = HandlerUtils::FormatAnnouncementWithDesc(
-        itemName, desc, cursor - 1, m_itemCount);
+        itemName, desc, m_itemCount - cursor, m_itemCount);
 
     Logger_Log("ScenarioSelect", "Cursor %d (itemId=%d, name='%s'), announcing: %s",
                cursor, itemId, name ? name : "?", announcement.c_str());
