@@ -1,8 +1,5 @@
 // CUiTitle accessibility handler — title screen menu.
 //
-// Hooks vtable[3] (tick/update) via MinHook ONLY to capture the this pointer.
-// All state reading and speech happens in OnFrame() (SwapBuffers context).
-//
 // Title menu items are pre-baked textures (same in all languages):
 //   0: "New Game", 1: "Continue", 2: "New Game +", 3: "Exit Game"
 //
@@ -11,14 +8,9 @@
 //   Cursor moved in state 12:  Speak(item, true)
 
 #include "handlers/title_handler.h"
-#include "memory_inspector.h"
 #include "speech_manager.h"
 #include "offsets.h"
 #include "logger.h"
-
-#include <modloader/utils.h>
-#include <MinHook.h>
-#include <windows.h>
 
 // State 12 = interactive menu (from Ghidra state machine analysis)
 static constexpr uint32_t STATE_INTERACTIVE = 12;
@@ -53,114 +45,21 @@ TitleHandler* TitleHandler::Get()
     return &instance;
 }
 
-// ============================================================
-// Hook installation
-// ============================================================
-
-void TitleHandler::Install()
+uintptr_t TitleHandler::GetTickRVA() const
 {
-    if (m_installed) return;
-
-    uintptr_t base = reinterpret_cast<uintptr_t>(getBaseOffset());
-
-    s_hookTarget = reinterpret_cast<void*>(base + Offsets::FUNC_CUiTitle_Tick);
-
-    MH_STATUS status = MH_CreateHook(s_hookTarget, (void*)&HookedTick,
-                                      reinterpret_cast<void**>(&s_originalTick));
-    if (status != MH_OK) {
-        Logger_Log("Title", "MH_CreateHook failed for tick @ RVA 0x%llx: %d",
-                   (unsigned long long)Offsets::FUNC_CUiTitle_Tick, status);
-        return;
-    }
-
-    status = MH_EnableHook(s_hookTarget);
-    if (status != MH_OK) {
-        Logger_Log("Title", "MH_EnableHook failed: %d", status);
-        MH_RemoveHook(s_hookTarget);
-        return;
-    }
-
-    m_installed = true;
-    Logger_Log("Title", "MinHook installed on CUiTitle tick (RVA 0x%llx)",
-               (unsigned long long)Offsets::FUNC_CUiTitle_Tick);
+    return Offsets::FUNC_CUiTitle_Tick;
 }
 
-void TitleHandler::Uninstall()
+void TitleHandler::OnScreenClosed()
 {
-    if (!m_installed) return;
-
-    if (s_hookTarget) {
-        MH_DisableHook(s_hookTarget);
-        MH_RemoveHook(s_hookTarget);
-    }
-
-    s_originalTick = nullptr;
-    s_hookTarget = nullptr;
-    s_thisPtr.store(nullptr, std::memory_order_relaxed);
-    s_tickFired.store(false, std::memory_order_relaxed);
-    m_lastCursorIndex = -1;
-    m_lastState = 0xFFFFFFFF;
     m_menuActive = false;
-    m_installed = false;
-
-    MemoryInspector::Get()->ClearPointer("CUiTitle");
-    Logger_Log("Title", "MinHook uninstalled");
+    m_lastState = 0xFFFFFFFF;
+    m_lastCursorIndex = -1;
 }
 
 // ============================================================
-// Tick detour — MINIMAL. Only captures this pointer.
+// OnFrameInner — handler-specific per-frame logic
 // ============================================================
-
-void __fastcall TitleHandler::HookedTick(void* thisPtr, void* param2)
-{
-    // Call original tick first (always)
-    if (s_originalTick) {
-        s_originalTick(thisPtr, param2);
-    }
-
-    // Store this pointer for OnFrame to use. That's ALL we do here.
-    if (thisPtr) {
-        s_thisPtr.store(thisPtr, std::memory_order_relaxed);
-        s_tickFired.store(true, std::memory_order_relaxed);
-    }
-}
-
-// ============================================================
-// OnFrame — all state reading and speech happens here
-// (called from SwapBuffers hook, safe context)
-// ============================================================
-
-// SEH wrapper — must be in a separate function with no C++ objects
-static void OnFrameSEH(TitleHandler* handler, void* thisPtr)
-{
-    __try {
-        handler->OnFrameInner(thisPtr);
-    } __except(EXCEPTION_EXECUTE_HANDLER) {
-        Logger_Log("Title", "EXCEPTION in OnFrame (this=%p, code=0x%08lx)",
-                   thisPtr, GetExceptionCode());
-    }
-}
-
-void TitleHandler::OnFrame()
-{
-    bool tickFired = s_tickFired.exchange(false, std::memory_order_relaxed);
-
-    if (!tickFired) {
-        if (m_menuActive) {
-            Logger_Log("Title", "Screen closed (tick stopped firing)");
-            m_menuActive = false;
-            m_lastState = 0xFFFFFFFF;
-            m_lastCursorIndex = -1;
-        }
-        return;
-    }
-
-    void* thisPtr = s_thisPtr.load(std::memory_order_relaxed);
-    if (!thisPtr) return;
-
-    MemoryInspector::Get()->SetActivePointer("CUiTitle", thisPtr);
-    OnFrameSEH(this, thisPtr);
-}
 
 void TitleHandler::OnFrameInner(void* thisPtr)
 {
@@ -245,7 +144,6 @@ void TitleHandler::AnnounceCurrentItem(void* thisPtr)
 
     const char* itemText = GetTitleMenuItem(cursor);
 
-    // Speech rule: cursor moved — speak new item (interrupt): "name, N of M"
     std::string announcement = std::string(itemText) + ", " +
         std::to_string(cursor + 1) + " of " + std::to_string(itemCount);
 

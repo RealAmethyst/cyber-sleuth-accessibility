@@ -1,8 +1,5 @@
 // CUiScenarioSelect accessibility handler — campaign selection screen.
 //
-// Hooks vtable[3] (tick/update) via MinHook ONLY to capture the this pointer.
-// All state reading and speech happens in OnFrame() (SwapBuffers context).
-//
 // The tick fires during the cutscene AND the interactive menu. We wait for
 // TextCapture to deliver scenario_select:1 (prompt text) before announcing
 // anything — that's the signal the interactive phase has started.
@@ -18,10 +15,6 @@
 #include "offsets.h"
 #include "logger.h"
 
-#include <modloader/utils.h>
-#include <MinHook.h>
-#include <windows.h>
-
 // ============================================================
 // Singleton
 // ============================================================
@@ -30,6 +23,17 @@ ScenarioSelectHandler* ScenarioSelectHandler::Get()
 {
     static ScenarioSelectHandler instance;
     return &instance;
+}
+
+uintptr_t ScenarioSelectHandler::GetTickRVA() const
+{
+    return Offsets::FUNC_CUiScenarioSelect_Tick;
+}
+
+void ScenarioSelectHandler::OnScreenClosed()
+{
+    m_interactive = false;
+    m_lastCursor = -1;
 }
 
 // ============================================================
@@ -46,116 +50,37 @@ const char* ScenarioSelectHandler::GetCampaignName(int rowId)
 }
 
 // ============================================================
-// Hook installation
+// OnFrame — custom override for pre-tick event consumption
 // ============================================================
-
-void ScenarioSelectHandler::Install()
-{
-    if (m_installed) return;
-
-    uintptr_t base = reinterpret_cast<uintptr_t>(getBaseOffset());
-
-    s_hookTarget = reinterpret_cast<void*>(base + Offsets::FUNC_CUiScenarioSelect_Tick);
-
-    MH_STATUS status = MH_CreateHook(s_hookTarget, (void*)&HookedTick,
-                                      reinterpret_cast<void**>(&s_originalTick));
-    if (status != MH_OK) {
-        Logger_Log("ScenarioSelect", "MH_CreateHook failed for tick @ RVA 0x%llx: %d",
-                   (unsigned long long)Offsets::FUNC_CUiScenarioSelect_Tick, status);
-        return;
-    }
-
-    status = MH_EnableHook(s_hookTarget);
-    if (status != MH_OK) {
-        Logger_Log("ScenarioSelect", "MH_EnableHook failed: %d", status);
-        MH_RemoveHook(s_hookTarget);
-        return;
-    }
-
-    m_installed = true;
-    Logger_Log("ScenarioSelect", "MinHook installed on CUiScenarioSelect tick (RVA 0x%llx)",
-               (unsigned long long)Offsets::FUNC_CUiScenarioSelect_Tick);
-}
-
-void ScenarioSelectHandler::Uninstall()
-{
-    if (!m_installed) return;
-
-    if (s_hookTarget) {
-        MH_DisableHook(s_hookTarget);
-        MH_RemoveHook(s_hookTarget);
-    }
-
-    s_originalTick = nullptr;
-    s_hookTarget = nullptr;
-    s_thisPtr.store(nullptr, std::memory_order_relaxed);
-    s_tickFired.store(false, std::memory_order_relaxed);
-    m_tickActive = false;
-    m_interactive = false;
-    m_lastCursor = -1;
-    m_installed = false;
-
-    MemoryInspector::Get()->ClearPointer("CUiScenarioSelect");
-    Logger_Log("ScenarioSelect", "MinHook uninstalled");
-}
-
-// ============================================================
-// Tick detour — MINIMAL. Only captures this pointer.
-// ============================================================
-
-void __fastcall ScenarioSelectHandler::HookedTick(void* thisPtr, void* param2)
-{
-    if (s_originalTick) {
-        s_originalTick(thisPtr, param2);
-    }
-
-    if (thisPtr) {
-        s_thisPtr.store(thisPtr, std::memory_order_relaxed);
-        s_tickFired.store(true, std::memory_order_relaxed);
-    }
-}
-
-// ============================================================
-// OnFrame — all state reading and speech happens here
-// ============================================================
-
-static void OnFrameSEH(ScenarioSelectHandler* handler, void* thisPtr)
-{
-    __try {
-        handler->OnFrameInner(thisPtr);
-    } __except(EXCEPTION_EXECUTE_HANDLER) {
-        Logger_Log("ScenarioSelect", "EXCEPTION in OnFrame (this=%p, code=0x%08lx)",
-                   thisPtr, GetExceptionCode());
-    }
-}
 
 void ScenarioSelectHandler::OnFrame()
 {
+    if (!m_installed) return;
+
     // Always consume events to avoid stale buildup
     auto events = TextCapture::Get()->ConsumeScenarioSelectEvents();
 
-    bool tickFired = s_tickFired.exchange(false, std::memory_order_relaxed);
+    bool tickFired = ExchangeTickFired();
 
     if (!tickFired) {
-        if (m_tickActive) {
+        if (m_screenActive) {
             Logger_Log("ScenarioSelect", "Screen closed (tick stopped firing)");
-            m_tickActive = false;
-            m_interactive = false;
-            m_lastCursor = -1;
+            OnScreenClosed();
+            m_screenActive = false;
         }
         return;
     }
 
-    void* thisPtr = s_thisPtr.load(std::memory_order_relaxed);
+    void* thisPtr = LoadThisPtr();
     if (!thisPtr) return;
 
     // Track tick activity (but don't announce yet — wait for interactive signal)
-    if (!m_tickActive) {
-        m_tickActive = true;
+    if (!m_screenActive) {
+        m_screenActive = true;
         Logger_Log("ScenarioSelect", "Tick started (cutscene/menu active)");
     }
 
-    MemoryInspector::Get()->SetActivePointer("CUiScenarioSelect", thisPtr);
+    MemoryInspector::Get()->SetActivePointer("ScenarioSelect", thisPtr);
 
     // Check TextCapture events for the prompt text (signals interactive phase)
     if (!m_interactive) {
@@ -169,7 +94,7 @@ void ScenarioSelectHandler::OnFrame()
                 SpeechManager::Get()->Speak(event.text, true);
 
                 // Read and announce current cursor position
-                OnFrameSEH(this, thisPtr);
+                CallWithSEH(thisPtr);
                 return;
             }
         }
@@ -178,7 +103,7 @@ void ScenarioSelectHandler::OnFrame()
     }
 
     // Interactive phase — track cursor from memory
-    OnFrameSEH(this, thisPtr);
+    CallWithSEH(thisPtr);
 }
 
 void ScenarioSelectHandler::OnFrameInner(void* thisPtr)

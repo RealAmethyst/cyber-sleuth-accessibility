@@ -1,15 +1,10 @@
 #pragma once
 
-#include "hooks.h"
-#include <atomic>
+#include "handlers/tick_handler.h"
 #include <cstdint>
 #include <string>
 
 // Handles accessibility for CUiYesNoWindow — Yes/No/Cancel dialog prompts.
-//
-// Strategy: Hook CUiYesNoWindow's tick function (vtable[3], RVA 0x426c90) via
-// MinHook ONLY to capture the this pointer. All state reading and speech
-// happens in OnFrame() (SwapBuffers context).
 //
 // Message text comes from TextCapture (yes_no_message table lookups).
 // Button labels are "Yes"/"No" from common_message:2100/2101 (or custom per
@@ -29,40 +24,25 @@
 //   Dialog opened (state -> 4): Speak(message, true) then Speak(option, false)
 //   Cursor moved in state 4:   Speak(option, true)
 //   Dialog closed (state 5/6): silence (old speech is stale)
-class YesNoHandler : public IFrameHandler
+class YesNoHandler : public TickHandler<YesNoHandler>
 {
 public:
     static YesNoHandler* Get();
 
-    void Install();
-    void Uninstall();
-
-    bool IsInstalled() const { return m_installed; }
-
-    // IFrameHandler
-    void OnFrame() override;
-
-    // Public so the SEH wrapper free function can call it
+    // TickHandler interface
+    const char* GetHandlerName() const { return "YesNo"; }
+    uintptr_t GetTickRVA() const;
     void OnFrameInner(void* thisPtr);
+    void OnScreenClosed();
 
 private:
     YesNoHandler() = default;
+    friend class TickHandler<YesNoHandler>;
 
-    bool m_installed = false;
     int32_t m_lastState = -1;
     int32_t m_lastCursor = -1;
     bool m_dialogActive = false;
     std::string m_currentMessage;  // cached from TextCapture
-
-    // Tick detour stores this pointer atomically
-    static inline std::atomic<void*> s_thisPtr{nullptr};
-    static inline std::atomic<bool> s_tickFired{false};
-
-    using TickFunc = void(__fastcall*)(void* thisPtr, void* param2);
-    static inline TickFunc s_originalTick = nullptr;
-    static inline void* s_hookTarget = nullptr;
-
-    static void __fastcall HookedTick(void* thisPtr, void* param2);
 
     // State reading
     static int32_t ReadState(void* thisPtr);

@@ -1,8 +1,5 @@
 // CUiMainMenu accessibility handler.
 //
-// Hooks vtable[3] (tick/update) via MinHook ONLY to capture the this pointer.
-// All state reading and speech happens in OnFrame() (SwapBuffers context).
-//
 // Text lookup: FUN_1401b9260(textManager, "main_menu", id, language)
 // main_menu.mbe IDs: 1=Organize, 2=Items, 3=Status, 4=Options,
 //   5=Save/Load, 6=Sort Digimon, 7=Farm, 8=Exit
@@ -12,29 +9,13 @@
 //   Cursor moved in state 3:  Speak(item, true)
 
 #include "handlers/main_menu_handler.h"
-#include "memory_inspector.h"
 #include "speech_manager.h"
 #include "game_text.h"
 #include "offsets.h"
 #include "logger.h"
 
-#include <modloader/utils.h>
-#include <MinHook.h>
-#include <windows.h>
-
 // State 3 = interactive menu
 static constexpr int16_t STATE_INTERACTIVE = 3;
-
-// SEH wrapper — must be a free function (no C++ objects with destructors)
-static void OnFrameSEH(MainMenuHandler* handler, void* thisPtr)
-{
-    __try {
-        handler->OnFrameInner(thisPtr);
-    } __except(EXCEPTION_EXECUTE_HANDLER) {
-        Logger_Log("MainMenu", "EXCEPTION in OnFrame (this=%p, code=0x%08lx)",
-                   thisPtr, GetExceptionCode());
-    }
-}
 
 MainMenuHandler* MainMenuHandler::Get()
 {
@@ -42,96 +23,19 @@ MainMenuHandler* MainMenuHandler::Get()
     return &instance;
 }
 
-void MainMenuHandler::Install()
+uintptr_t MainMenuHandler::GetTickRVA() const
 {
-    if (m_installed) return;
-
-    uintptr_t base = reinterpret_cast<uintptr_t>(getBaseOffset());
-
-    // Hook CUiMainMenu's tick function via MinHook
-    s_hookTarget = reinterpret_cast<void*>(base + Offsets::FUNC_CUiMainMenu_Tick);
-
-    MH_STATUS status = MH_CreateHook(s_hookTarget, (void*)&HookedTick,
-                                      reinterpret_cast<void**>(&s_originalTick));
-    if (status != MH_OK) {
-        Logger_Log("MainMenu", "MH_CreateHook failed for tick @ 0x%llx: %d",
-                   (unsigned long long)(base + Offsets::FUNC_CUiMainMenu_Tick), status);
-        return;
-    }
-
-    status = MH_EnableHook(s_hookTarget);
-    if (status != MH_OK) {
-        Logger_Log("MainMenu", "MH_EnableHook failed: %d", status);
-        MH_RemoveHook(s_hookTarget);
-        return;
-    }
-
-    m_installed = true;
-    Logger_Log("MainMenu", "MinHook installed on CUiMainMenu tick (RVA 0x%llx)",
-               (unsigned long long)Offsets::FUNC_CUiMainMenu_Tick);
+    return Offsets::FUNC_CUiMainMenu_Tick;
 }
 
-void MainMenuHandler::Uninstall()
+void MainMenuHandler::OnScreenClosed()
 {
-    if (!m_installed) return;
-
-    if (s_hookTarget) {
-        MH_DisableHook(s_hookTarget);
-        MH_RemoveHook(s_hookTarget);
-    }
-
-    s_originalTick = nullptr;
-    s_hookTarget = nullptr;
-    s_thisPtr.store(nullptr, std::memory_order_relaxed);
-    s_tickFired.store(false, std::memory_order_relaxed);
-    m_lastCursorIndex = -1;
-    m_lastState = -1;
     m_menuActive = false;
-    m_installed = false;
-
-    MemoryInspector::Get()->ClearPointer("CUiMainMenu");
-    Logger_Log("MainMenu", "MinHook uninstalled");
+    m_lastState = -1;
+    m_lastCursorIndex = -1;
 }
 
-// === Tick detour — MINIMAL, only captures this pointer ===
-
-void __fastcall MainMenuHandler::HookedTick(void* thisPtr, void* param2)
-{
-    if (s_originalTick) {
-        s_originalTick(thisPtr, param2);
-    }
-
-    if (thisPtr) {
-        s_thisPtr.store(thisPtr, std::memory_order_relaxed);
-        s_tickFired.store(true, std::memory_order_relaxed);
-    }
-}
-
-// === OnFrame — all work happens here (SwapBuffers context) ===
-
-void MainMenuHandler::OnFrame()
-{
-    if (!m_installed) return;
-
-    bool fired = s_tickFired.exchange(false, std::memory_order_relaxed);
-
-    if (!fired) {
-        // Tick stopped firing — menu was closed
-        if (m_menuActive) {
-            Logger_Log("MainMenu", "Tick stopped — menu closed");
-            m_menuActive = false;
-            m_lastState = -1;
-            m_lastCursorIndex = -1;
-        }
-        return;
-    }
-
-    void* thisPtr = s_thisPtr.load(std::memory_order_relaxed);
-    if (!thisPtr) return;
-
-    MemoryInspector::Get()->SetActivePointer("CUiMainMenu", thisPtr);
-    OnFrameSEH(this, thisPtr);
-}
+// === OnFrameInner — handler-specific per-frame logic ===
 
 void MainMenuHandler::OnFrameInner(void* thisPtr)
 {
@@ -149,7 +53,6 @@ void MainMenuHandler::OnFrameInner(void* thisPtr)
         m_menuActive = true;
         m_lastCursorIndex = cursor;
 
-        // Speech rule: menu name first (interrupt), then current item (queued)
         SpeechManager::Get()->Speak("Main Menu", true);
         AnnounceItem(thisPtr, false);
 
@@ -194,7 +97,6 @@ int32_t MainMenuHandler::ReadItemCount(void* thisPtr)
 
 std::string MainMenuHandler::LookupMenuItemText(int cursorIndex)
 {
-    // main_menu.mbe IDs are 1-based (cursor + 1)
     std::string text = GameText_Lookup("main_menu", cursorIndex + 1);
     if (!text.empty()) return text;
     return "item " + std::to_string(cursorIndex + 1);
