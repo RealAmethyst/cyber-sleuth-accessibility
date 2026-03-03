@@ -6,11 +6,11 @@
 
 // Handles accessibility for the title screen (CUiTitle).
 //
-// Title menu items are pre-baked textures (identical in all languages):
-//   Cursor 0: "New Game"
-//   Cursor 1: "Continue"
-//   Cursor 2: "New Game +"  (locked when +0xc4 == 0)
-//   Cursor 3: "Exit Game"
+// Title menu items are pre-baked textures, localized per language:
+//   Cursor 0: "New Game" / "Neues Spiel" / etc.
+//   Cursor 1: "Continue" / "Fortfahren" / etc.
+//   Cursor 2: "New Game +" / "Neues Spiel+" / etc. (locked when +0xc4 == 0)
+//   Cursor 3: "Exit Game" / "Spiel beenden" / etc.
 //
 // CUiTitle member layout (from Ghidra decompilation):
 //   +0xa8:  uint32 state index (state 12 = interactive menu)

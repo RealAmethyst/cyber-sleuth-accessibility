@@ -64,9 +64,7 @@ void CyberSleuthAccessibility::onEnable()
     Logger_Log("Main", "Plugin onEnable — v0.11.0");
 
     auto* speech = SpeechManager::Get();
-    if (speech->Initialize()) {
-        speech->Speak("Cyber Sleuth Accessibility loaded", true);
-    } else {
+    if (!speech->Initialize()) {
         Logger_Log("Main", "SpeechManager init failed — no screen reader output");
     }
 

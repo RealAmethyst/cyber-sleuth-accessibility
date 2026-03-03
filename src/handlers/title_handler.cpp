@@ -1,11 +1,12 @@
 // CUiTitle accessibility handler — title screen menu.
 //
-// Title menu items are pre-baked textures (same in all languages):
-//   0: "New Game", 1: "Continue", 2: "New Game +", 3: "Exit Game"
+// Title menu items are pre-baked textures, localized per language.
+// State 7 = "Press Any Button" idle, State 12 = interactive menu.
 //
 // Speech rules:
-//   Menu opened (state -> 12): Speak("Title Menu", true) then Speak(item, false)
-//   Cursor moved in state 12:  Speak(item, true)
+//   Press Any Button (state -> 7):  Speak(game title, true) then Speak(text, false)
+//   Menu opened (state -> 12):      Speak(item, true)
+//   Cursor moved in state 12:       Speak(item, true)
 
 #include "handlers/title_handler.h"
 #include "handlers/handler_utils.h"
@@ -34,23 +35,39 @@ static const char* s_pressAnyButtonText[] = {
 static constexpr int LANGUAGE_COUNT = 6;
 
 // ============================================================
-// Title menu item labels (pre-baked textures, same in all languages)
+// Title menu item labels (pre-baked textures, localized per language)
 // ============================================================
+// Language indices: 0=JP, 1=EN, 2=CN, 3=EN_Censor, 4=KR, 5=DE
 
-static const char* s_titleMenuItems[] = {
-    "New Game",
-    "Continue",
-    "New Game +",
-    "Exit Game",
-};
 static constexpr int TITLE_MENU_ITEM_COUNT = 4;
+
+static const char* s_titleMenuItems[][TITLE_MENU_ITEM_COUNT] = {
+    // 0: JP (same as EN in textures)
+    { "New Game", "Continue", "New Game +", "Exit Game" },
+    // 1: EN
+    { "New Game", "Continue", "New Game +", "Exit Game" },
+    // 2: CN (same as EN in textures)
+    { "New Game", "Continue", "New Game +", "Exit Game" },
+    // 3: EN_Censor (same as EN)
+    { "New Game", "Continue", "New Game +", "Exit Game" },
+    // 4: KR
+    { "\xEC\xB2\x98\xEC\x9D\x8C\xEB\xB6\x80\xED\x84\xB0",
+      "\xEC\x9D\xB4\xEC\x96\xB4\xEC\x84\x9C",
+      "\xEC\xB2\x98\xEC\x9D\x8C\xEB\xB6\x80\xED\x84\xB0 +",
+      "\xEA\xB2\x8C\xEC\x9E\x84 \xEC\xA2\x85\xEB\xA3\x8C" },
+    // 5: DE
+    { "Neues Spiel", "Fortfahren", "Neues Spiel+", "Spiel beenden" },
+};
 
 const char* TitleHandler::GetTitleMenuItem(int cursorIndex)
 {
-    if (cursorIndex >= 0 && cursorIndex < TITLE_MENU_ITEM_COUNT) {
-        return s_titleMenuItems[cursorIndex];
-    }
-    return "Unknown";
+    if (cursorIndex < 0 || cursorIndex >= TITLE_MENU_ITEM_COUNT)
+        return "Unknown";
+
+    int lang = GameText_GetLanguage();
+    if (lang < 0 || lang >= LANGUAGE_COUNT) lang = 1;  // fallback to EN
+
+    return s_titleMenuItems[lang][cursorIndex];
 }
 
 // ============================================================
@@ -153,12 +170,9 @@ void TitleHandler::AnnounceMenuOpened(void* thisPtr)
 
     Logger_Log("Title", "Menu opened at cursor %d, itemCount %d", cursor, itemCount);
 
-    // 1. Menu name (interrupt)
-    SpeechManager::Get()->Speak("Title Menu", true);
-
-    // 2. First item (queue): "name, N of M"
+    // Announce first item directly (no header — follows naturally after "Press Any Button")
     auto announcement = HandlerUtils::FormatAnnouncement(itemText, cursor, itemCount);
-    SpeechManager::Get()->Speak(announcement, false);
+    SpeechManager::Get()->Speak(announcement, true);
 }
 
 void TitleHandler::AnnounceCurrentItem(void* thisPtr)
