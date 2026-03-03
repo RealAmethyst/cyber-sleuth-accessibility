@@ -10,11 +10,28 @@
 #include "handlers/title_handler.h"
 #include "handlers/handler_utils.h"
 #include "speech_manager.h"
+#include "game_text.h"
 #include "offsets.h"
 #include "logger.h"
 
+// State 7 = "Press Any Button" idle screen (title logo visible, waiting for input)
 // State 12 = interactive menu (from Ghidra state machine analysis)
+static constexpr uint32_t STATE_PRESS_ANY_BUTTON = 7;
 static constexpr uint32_t STATE_INTERACTIVE = 12;
+
+// ============================================================
+// "Press Any Button" text per language (from ui_title_logo_bg.img)
+// ============================================================
+
+static const char* s_pressAnyButtonText[] = {
+    "Press Any button",                              // 0: JP
+    "Press Any button",                              // 1: EN
+    "Press Any button",                              // 2: CN
+    "Press Any button",                              // 3: EN_Censor
+    "Press Any button",                              // 4: KR
+    "Beliebige Taste dr\u00fccken",                  // 5: DE
+};
+static constexpr int LANGUAGE_COUNT = 6;
 
 // ============================================================
 // Title menu item labels (pre-baked textures, same in all languages)
@@ -71,6 +88,16 @@ void TitleHandler::OnFrameInner(void* thisPtr)
     // Clamp cursor
     if (itemCount > 0 && itemCount <= TITLE_MENU_ITEM_COUNT) {
         cursor = cursor % itemCount;
+    }
+
+    // Detect "Press Any Button" screen (state transitions to 7)
+    if (state == STATE_PRESS_ANY_BUTTON && m_lastState != STATE_PRESS_ANY_BUTTON) {
+        int lang = GameText_GetLanguage();
+        if (lang < 0 || lang >= LANGUAGE_COUNT) lang = 1;
+
+        Logger_Log("Title", "Press Any Button screen (state %u)", state);
+        SpeechManager::Get()->Speak("Digimon Story Cyber Sleuth Complete Edition", true);
+        SpeechManager::Get()->Speak(s_pressAnyButtonText[lang], false);
     }
 
     // Detect menu becoming interactive (state transitions to 12)

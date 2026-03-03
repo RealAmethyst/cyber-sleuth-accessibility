@@ -27,6 +27,17 @@ void GameText_Init()
 }
 
 // Read current language index live — player may change it in settings.
+int GameText_GetLanguage()
+{
+    uintptr_t langSettings = *reinterpret_cast<uintptr_t*>(
+        s_base + Offsets::Text::DAT_LanguageSettings);
+    if (langSettings != 0) {
+        return static_cast<int>(*reinterpret_cast<unsigned int*>(
+            langSettings + Offsets::Text::LANGUAGE_INDEX_OFFSET));
+    }
+    return 1;  // Default to English
+}
+
 static unsigned int GetLanguage()
 {
     uintptr_t langSettings = *reinterpret_cast<uintptr_t*>(

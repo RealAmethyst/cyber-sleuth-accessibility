@@ -8,6 +8,9 @@
 
 void GameText_Init();
 
+// Returns the current language index (0=JP, 1=EN, 2=CN, 3=EN_Censor, 4=KR, 5=DE).
+int GameText_GetLanguage();
+
 // Look up text from any MBE table by table name and row ID.
 // Returns the localized text string, or empty string on failure.
 std::string GameText_Lookup(const char* tableName, int rowId);

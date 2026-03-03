@@ -11,6 +11,7 @@
 #include "handlers/subtitle_handler.h"
 #include "handlers/yesno_handler.h"
 #include "handlers/scenario_select_handler.h"
+#include "handlers/title_logo_handler.h"
 #include "text_capture.h"
 #include "game_text.h"
 
@@ -31,6 +32,8 @@ static std::vector<HandlerEntry> GetHandlers()
 {
     return {
         { MemoryInspector::Get(),        {}, {} },
+        { TitleLogoHandler::Get(),       [](){ TitleLogoHandler::Get()->Install(); },
+                                         [](){ TitleLogoHandler::Get()->Uninstall(); } },
         { TextCapture::Get(),            [](){ TextCapture::Get()->Install(); },
                                          [](){ TextCapture::Get()->Uninstall(); } },
         { TitleHandler::Get(),           [](){ TitleHandler::Get()->Install(); },

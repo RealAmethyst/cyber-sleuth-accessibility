@@ -136,6 +136,8 @@ constexpr uintptr_t VTABLE_CUiMedalList       = 0xaaeaa0;
 // of how the game dispatches calls (vtable, direct, table-driven).
 // Signature: void __fastcall tick(void* thisPtr, void* param2)
 constexpr uintptr_t FUNC_CUiTitle_Tick        = 0x4CC2F0;
+constexpr uintptr_t FUNC_CUiTitleLogo_Tick    = 0x4CF430;
+constexpr uintptr_t FUNC_CUiFirstSequence_Tick = 0x4295C0;
 constexpr uintptr_t FUNC_CUiMainMenu_Tick     = 0x4B6270;
 constexpr uintptr_t FUNC_CUiYesNoWindow_Tick  = 0x426C90;
 constexpr uintptr_t FUNC_CUiScenarioSelect_Tick = 0x4C89A0;
@@ -148,6 +150,11 @@ namespace ScenarioSelect {
     constexpr uintptr_t ITEM_ID_BASE     = 0xD0;   // int32 array, item row IDs (scenario_select table)
     constexpr uintptr_t ITEM_ID_STRIDE   = 0x04;
     constexpr uintptr_t CURSOR_INDEX     = 0xE0;   // int32, 1-based cursor (1=HM, 2=CS for normal new game)
+}
+
+// === CUiTitleLogo member offsets ===
+namespace TitleLogo {
+    constexpr uintptr_t STATE = 0xF8;  // int32, state machine index (29 states, function table dispatch at +0x10)
 }
 
 // Old vtable[2] cleanup/teardown RVAs (NOT per-frame — only fire on transitions)

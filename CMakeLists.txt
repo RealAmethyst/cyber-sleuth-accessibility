@@ -60,10 +60,12 @@ add_library(CyberSleuthAccessibility SHARED
   src/handlers/subtitle_handler.cpp
   src/handlers/yesno_handler.cpp
   src/handlers/scenario_select_handler.cpp
+  src/handlers/title_logo_handler.cpp
 )
 
 target_include_directories(CyberSleuthAccessibility PRIVATE include)
 target_compile_definitions(CyberSleuthAccessibility PRIVATE SRAL_STATIC)
+target_compile_options(CyberSleuthAccessibility PRIVATE /utf-8)
 
 # Link SRAL — try SRAL_static first (from SRAL's CMakeLists), fall back to SRAL
 if(TARGET SRAL_static)
