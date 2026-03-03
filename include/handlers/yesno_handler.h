@@ -67,7 +67,6 @@ private:
     // State reading
     static int32_t ReadState(void* thisPtr);
     static int32_t ReadResult(void* thisPtr);
-    static bool ReadCancelEnabled(void* thisPtr);
     static int32_t ReadCursor(void* thisPtr);
 
     // Text lookup

@@ -1,11 +1,8 @@
-// VTable hooking infrastructure and per-frame handler dispatch.
+// Per-frame handler dispatch via SwapBuffers (OpenGL) hook.
 //
-// SwapBuffers (OpenGL) is hooked via MinHook to get a reliable per-frame
-// callback on the game thread. Frame handlers register to receive OnFrame()
-// calls, where they can poll UI state and announce changes.
-//
-// VTable hooks use VirtualProtect to swap individual vtable entries,
-// following the same pattern as the Skyrim accessibility mod.
+// SwapBuffers is hooked via MinHook to get a reliable per-frame callback
+// on the game thread. Frame handlers register to receive OnFrame() calls,
+// where they can poll UI state and announce changes.
 
 #include "hooks.h"
 #include "speech_manager.h"
@@ -19,49 +16,6 @@
 #include <vector>
 #include <mutex>
 #include <algorithm>
-
-// ============================================================
-// VTable hook helpers
-// ============================================================
-
-void* HookVTableEntry(void* object, int index, void* newFunc)
-{
-    if (!object || !newFunc) return nullptr;
-
-    // First qword of the object is the vtable pointer
-    uintptr_t* vtable = *reinterpret_cast<uintptr_t**>(object);
-    uintptr_t* entry = &vtable[index];
-
-    // Save original
-    void* original = reinterpret_cast<void*>(*entry);
-
-    // Make writable, swap, restore
-    DWORD oldProtect;
-    VirtualProtect(entry, sizeof(uintptr_t), PAGE_EXECUTE_READWRITE, &oldProtect);
-    *entry = reinterpret_cast<uintptr_t>(newFunc);
-    VirtualProtect(entry, sizeof(uintptr_t), oldProtect, &oldProtect);
-
-    Logger_Log("Hooks", "VTable hook: [%d] %p -> %p", index, original, newFunc);
-    return original;
-}
-
-void* HookVTableByAddress(uintptr_t vtableAddr, int index, void* newFunc)
-{
-    if (!vtableAddr || !newFunc) return nullptr;
-
-    uintptr_t* entry = reinterpret_cast<uintptr_t*>(vtableAddr + index * sizeof(uintptr_t));
-
-    void* original = reinterpret_cast<void*>(*entry);
-
-    DWORD oldProtect;
-    VirtualProtect(entry, sizeof(uintptr_t), PAGE_EXECUTE_READWRITE, &oldProtect);
-    *entry = reinterpret_cast<uintptr_t>(newFunc);
-    VirtualProtect(entry, sizeof(uintptr_t), oldProtect, &oldProtect);
-
-    Logger_Log("Hooks", "VTable hook @ 0x%llx[%d]: %p -> %p",
-               (unsigned long long)vtableAddr, index, original, newFunc);
-    return original;
-}
 
 // ============================================================
 // Frame handler registry

@@ -24,10 +24,6 @@
 #include <windows.h>
 
 // State constants (from Ghidra decompilation of tick function)
-static constexpr int32_t STATE_IDLE        = 0;
-static constexpr int32_t STATE_READY       = 1;
-static constexpr int32_t STATE_OPENING     = 2;
-static constexpr int32_t STATE_ANIM        = 3;
 static constexpr int32_t STATE_INTERACTIVE = 4;
 static constexpr int32_t STATE_CLOSING     = 5;
 static constexpr int32_t STATE_DONE        = 6;
@@ -205,12 +201,6 @@ int32_t YesNoHandler::ReadResult(void* thisPtr)
 {
     auto* ptr = reinterpret_cast<uint8_t*>(thisPtr);
     return *reinterpret_cast<int32_t*>(ptr + Offsets::YesNoWindow::RESULT);
-}
-
-bool YesNoHandler::ReadCancelEnabled(void* thisPtr)
-{
-    auto* ptr = reinterpret_cast<uint8_t*>(thisPtr);
-    return *reinterpret_cast<uint8_t*>(ptr + Offsets::YesNoWindow::CANCEL_ENABLED) != 0;
 }
 
 int32_t YesNoHandler::ReadCursor(void* thisPtr)

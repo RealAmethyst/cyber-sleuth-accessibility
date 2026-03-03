@@ -3,8 +3,6 @@
 #include <windows.h>
 #include <cstdio>
 #include <cstdarg>
-#include <ctime>
-#include <malloc.h>
 
 static FILE* g_logFile = nullptr;
 static CRITICAL_SECTION g_logLock;
@@ -60,16 +58,3 @@ void Logger_Log(const char* tag, const char* fmt, ...)
     LeaveCriticalSection(&g_logLock);
 }
 
-void Logger_LogSpeech(const wchar_t* text, bool interrupt)
-{
-    if (!g_logFile || !text) return;
-
-    // Convert wide string to UTF-8 for the log file
-    int needed = WideCharToMultiByte(CP_UTF8, 0, text, -1, nullptr, 0, nullptr, nullptr);
-    if (needed <= 0) return;
-
-    char* utf8 = (char*)_alloca(needed);
-    WideCharToMultiByte(CP_UTF8, 0, text, -1, utf8, needed, nullptr, nullptr);
-
-    Logger_Log("SR", "%s \"%s\"", interrupt ? "Say" : "SayQueued", utf8);
-}

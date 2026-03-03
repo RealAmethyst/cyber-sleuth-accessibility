@@ -47,15 +47,11 @@ private:
     SpeechManager(const SpeechManager&) = delete;
     SpeechManager& operator=(const SpeechManager&) = delete;
 
-    void LogSpeech(const std::string& text, bool interrupt);
-
     struct SpeechRequest {
         std::string text;
         bool interrupt;
     };
 
-    FILE* m_speechLog = nullptr;
-    std::mutex m_logMutex;
     std::mutex m_queueMutex;
     std::vector<SpeechRequest> m_queue;
     std::atomic<bool> m_muted{false};
