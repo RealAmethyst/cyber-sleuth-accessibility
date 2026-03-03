@@ -3,6 +3,9 @@
 ## Project Goal
 Screen-reader accessibility mod for Digimon Story Cyber Sleuth Complete Edition (Steam/PC), enabling blind/visually impaired players to play the game.
 
+## Game Overview
+Digimon Story Cyber Sleuth Complete Edition is a JRPG with two campaigns (Cyber Sleuth and Hacker's Memory) set in near-future Tokyo and the digital world EDEN. Turn-based combat with up to 3 Digimon per side, 340+ Digimon species with branching digivolution trees, and extensive menus for party management, farming, shopping, and questing. Primarily controller-based (PlayStation-style) with keyboard support. See `llm-docs/` for detailed game screen enumeration, text table reference, and data catalog.
+
 ## Repositories
 
 ### This Repo (Plugin Code)
@@ -49,6 +52,8 @@ Each game screen gets a handler that:
 4. Tracks changes from previous frame (state-diff)
 5. Announces changes via SpeechManager
 
+**Tick-presence detection:** YesNoHandler and ScenarioSelectHandler use a `s_tickFired` atomic bool alongside `s_thisPtr`. When the tick stops firing (bool stays false for a frame), the handler knows the dialog/screen was closed. This is more reliable than checking state fields for detecting screen dismissal.
+
 ### CRITICAL: Tick Detours Must Be Minimal
 Doing ANY work beyond capturing a pointer inside a tick detour freezes the game. The tick detour must be:
 ```cpp
@@ -78,6 +83,8 @@ All spoken text comes from the game — **never hardcode announcement strings**.
 ### Address Strategy
 All hooks use `module_base + RVA_offset` (not absolute addresses). Offsets are centralized in `include/offsets.h`.
 
+`offsets.h` also contains a `Context` namespace with `DAT_GameContext`, `FUNC_GetGameContext`, `STORY_MODE_OFFSET`, and campaign detection offsets — infrastructure for distinguishing CS vs HM mode at runtime.
+
 ## Build & Deploy
 
 ### Prerequisites
@@ -105,7 +112,7 @@ Copy `CyberSleuthAccessibility.dll` to `resources/plugins/` at the game install 
 ### CMake Notes
 - Must define `BOOST_ALL_NO_LIB` to prevent vc143/vc145 auto-link mismatch
 - SRAL options must be set BEFORE `CPMAddPackage`
-- SRAL API: `SRAL_Initialize(0)`, `SRAL_Speak(text, interrupt)`, `SRAL_GetCurrentEngine()`, `SRAL_StopSpeech()`
+- SRAL API: `SRAL_Initialize(0)`, `SRAL_Speak(text, interrupt)`, `SRAL_GetCurrentEngine()`, `SRAL_StopSpeech()`, `SRAL_Uninitialize()`
 
 ## Game Binary Key Facts
 
@@ -141,7 +148,7 @@ const char* text = LookupText(manager, "table_name", rowId, language);  // RVA 0
 | MainMenuHandler | In-game main menu | MinHook tick | Dynamic text via LookupText. **Does work in tick detour — needs refactor** |
 | SubtitleHandler | Cutscene subtitles | None (polling) | Pure memory polling of Vista loader |
 | YesNoHandler | Yes/No dialogs | MinHook tick | Dynamic button labels from common_message |
-| ScenarioSelectHandler | Campaign selection | MinHook tick | TextCapture for interactive phase detection |
+| ScenarioSelectHandler | Campaign selection | MinHook tick | TextCapture for interactive phase detection; descriptions via direct LookupText |
 | TextCapture | All text | MinHook LookupText | Universal text source for all handlers |
 
 ## Development Phases
@@ -161,7 +168,7 @@ const char* text = LookupText(manager, "table_name", rowId, language);  // RVA 0
 | SpeechManager | Thread-safe SRAL speech queueing | speech_manager.h/cpp |
 | TextCapture | Universal LookupText hook + per-frame diffing | text_capture.h/cpp |
 | MemoryInspector | F5 memory dumps for offset discovery | memory_inspector.h/cpp |
-| UiProbe | Discovery tool — hooks many CUi ticks, logs activity | ui_probe.h/cpp |
+| UiProbe | Diagnostic-only discovery tool — hooks CUi ticks to find active classes. Not for production use (caused issues when hooking many classes at once) | ui_probe.h/cpp |
 
 ## Reference Projects
 - **DSCSModLoader:** https://github.com/SydMontague/DSCSModLoader
