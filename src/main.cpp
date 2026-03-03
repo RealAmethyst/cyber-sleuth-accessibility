@@ -10,6 +10,7 @@
 #include "handlers/title_handler.h"
 #include "handlers/subtitle_handler.h"
 #include "handlers/yesno_handler.h"
+#include "handlers/scenario_select_handler.h"
 #include "text_capture.h"
 
 class CyberSleuthAccessibility : public BasePlugin
@@ -24,7 +25,7 @@ public:
 void CyberSleuthAccessibility::onEnable()
 {
     Logger_Init();
-    Logger_Log("Main", "Plugin onEnable — v0.10.0 (YesNoHandler)");
+    Logger_Log("Main", "Plugin onEnable — v0.11.0 (ScenarioSelectHandler)");
 
     auto* speech = SpeechManager::Get();
     if (speech->Initialize()) {
@@ -67,12 +68,20 @@ void CyberSleuthAccessibility::onEnable()
     YesNoHandler::Get()->Install();
     RegisterFrameHandler(YesNoHandler::Get());
 
+    // Install ScenarioSelectHandler — hooks CUiScenarioSelect tick via MinHook,
+    // uses TextCapture for campaign descriptions and prompt text.
+    ScenarioSelectHandler::Get()->Install();
+    RegisterFrameHandler(ScenarioSelectHandler::Get());
+
     Logger_Log("Main", "Plugin startup complete. Press F5 to dump active CUi memory.");
 }
 
 void CyberSleuthAccessibility::onDisable()
 {
     Logger_Log("Main", "Plugin onDisable");
+
+    UnregisterFrameHandler(ScenarioSelectHandler::Get());
+    ScenarioSelectHandler::Get()->Uninstall();
 
     UnregisterFrameHandler(YesNoHandler::Get());
     YesNoHandler::Get()->Uninstall();

@@ -111,6 +111,13 @@ const char* __fastcall TextCapture::HookedLookupText(
             self->m_latestYesNo = {rowId, entry.text};
         }
 
+        // Cache scenario_select entries for ScenarioSelectHandler
+        if (entry.tableName == "scenario_select" && !entry.text.empty()) {
+            auto* self = TextCapture::Get();
+            std::lock_guard<std::mutex> lock(self->m_scenarioMutex);
+            self->m_scenarioEvents.push_back({rowId, entry.text});
+        }
+
         // Capture subtitle_text entries in order for SubtitleHandler
         if (entry.tableName == "subtitle_text" && !entry.text.empty()) {
             auto* self = TextCapture::Get();
@@ -154,6 +161,14 @@ TextCapture::YesNoEvent TextCapture::ConsumeYesNoMessage()
     YesNoEvent event = std::move(m_latestYesNo);
     m_latestYesNo = {};
     return event;
+}
+
+std::vector<TextCapture::ScenarioSelectEvent> TextCapture::ConsumeScenarioSelectEvents()
+{
+    std::lock_guard<std::mutex> lock(m_scenarioMutex);
+    std::vector<ScenarioSelectEvent> events = std::move(m_scenarioEvents);
+    m_scenarioEvents.clear();
+    return events;
 }
 
 // ============================================================

@@ -78,6 +78,14 @@ public:
     };
     YesNoEvent ConsumeYesNoMessage();  // Returns and clears the cached message
 
+    // Scenario select events — cached when the game looks up scenario_select text.
+    // ScenarioSelectHandler reads these to know prompt/description changes.
+    struct ScenarioSelectEvent {
+        int rowId = 0;
+        std::string text;
+    };
+    std::vector<ScenarioSelectEvent> ConsumeScenarioSelectEvents();
+
 private:
     TextCapture() = default;
 
@@ -88,6 +96,10 @@ private:
     // Latest yes_no_message lookup
     mutable std::mutex m_yesNoMutex;
     YesNoEvent m_latestYesNo;
+
+    // Scenario select events (accumulated per frame, consumed by handler)
+    mutable std::mutex m_scenarioMutex;
+    std::vector<ScenarioSelectEvent> m_scenarioEvents;
 
     bool m_installed = false;
 

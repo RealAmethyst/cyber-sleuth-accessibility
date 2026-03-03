@@ -138,6 +138,17 @@ constexpr uintptr_t VTABLE_CUiMedalList       = 0xaaeaa0;
 constexpr uintptr_t FUNC_CUiTitle_Tick        = 0x4CC2F0;
 constexpr uintptr_t FUNC_CUiMainMenu_Tick     = 0x4B6270;
 constexpr uintptr_t FUNC_CUiYesNoWindow_Tick  = 0x426C90;
+constexpr uintptr_t FUNC_CUiScenarioSelect_Tick = 0x4C89A0;
+
+// === CUiScenarioSelect member offsets (from memory dumps) ===
+// Tick fires during the cutscene AND the interactive menu.
+// The interactive phase begins when scenario_select:1 (prompt text) is looked up.
+// Cursor is 1-based: 1 = first item (HM, row ID 2), 2 = second item (CS, row ID 3).
+namespace ScenarioSelect {
+    constexpr uintptr_t ITEM_ID_BASE     = 0xD0;   // int32 array, item row IDs (scenario_select table)
+    constexpr uintptr_t ITEM_ID_STRIDE   = 0x04;
+    constexpr uintptr_t CURSOR_INDEX     = 0xE0;   // int32, 1-based cursor (1=HM, 2=CS for normal new game)
+}
 
 // Old vtable[2] cleanup/teardown RVAs (NOT per-frame — only fire on transitions)
 constexpr uintptr_t FUNC_CUiTitle_Cleanup     = 0x4CC160;
