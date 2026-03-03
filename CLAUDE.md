@@ -64,7 +64,7 @@ void __fastcall HookedTick(void* thisPtr, void* param2) {
 ```
 All logic goes in `OnFrame()` (SwapBuffers context). Speech is also queued — `Speak()` pushes to a queue, `Flush()` dispatches from SwapBuffers.
 
-**Note:** MainMenuHandler currently violates this pattern by doing work inside its tick detour. This should be refactored to match the other handlers.
+All handlers inherit from `TickHandler<Derived>` (CRTP template in `include/handlers/tick_handler.h`), which provides the tick hook install/uninstall, `s_thisPtr`/`s_tickFired` atomics, SEH wrapping, and `OnFrame()` dispatch. Handlers only implement `OnFrameInner()`, `OnScreenClosed()`, `GetTickRVA()`, and `GetHandlerName()`.
 
 ### TextCapture + Per-Handler Hooks (Layered Approach)
 - **TextCapture** (LookupText hook): Universal text source — captures ALL text the game fetches from MBE tables. Language-aware, works for all 6 languages.
@@ -145,10 +145,10 @@ const char* text = LookupText(manager, "table_name", rowId, language);  // RVA 0
 | Handler | Screen | Hook | Notes |
 |---|---|---|---|
 | TitleHandler | Title screen menu | MinHook tick | Hardcoded items (pre-baked textures) |
-| MainMenuHandler | In-game main menu | MinHook tick | Dynamic text via LookupText. **Does work in tick detour — needs refactor** |
+| MainMenuHandler | In-game main menu | MinHook tick | Dynamic text via GameText_Lookup |
 | SubtitleHandler | Cutscene subtitles | None (polling) | Pure memory polling of Vista loader |
 | YesNoHandler | Yes/No dialogs | MinHook tick | Dynamic button labels from common_message |
-| ScenarioSelectHandler | Campaign selection | MinHook tick | TextCapture for interactive phase detection; descriptions via direct LookupText |
+| ScenarioSelectHandler | Campaign selection | MinHook tick | TextCapture for interactive phase detection; descriptions via GameText_Lookup |
 | TextCapture | All text | MinHook LookupText | Universal text source for all handlers |
 
 ## Development Phases
@@ -167,6 +167,10 @@ const char* text = LookupText(manager, "table_name", rowId, language);  // RVA 0
 | Logger | File-based debug logging with timestamps | logger.h/cpp |
 | SpeechManager | Thread-safe SRAL speech queueing | speech_manager.h/cpp |
 | TextCapture | Universal LookupText hook + per-frame diffing | text_capture.h/cpp |
+| GameText | Shared wrapper for game's LookupText API | game_text.h/cpp |
+| HandlerUtils | ReadMemory<T> template + FormatAnnouncement helpers | handlers/handler_utils.h |
+| TickHandler | CRTP base class for all tick-hooked handlers | handlers/tick_handler.h |
+| PluginUtil | GetPluginDir() — cached DLL directory path | plugin_util.h/cpp |
 | MemoryInspector | F5 memory dumps for offset discovery | memory_inspector.h/cpp |
 | UiProbe | Diagnostic-only discovery tool — hooks CUi ticks to find active classes. Not for production use (caused issues when hooking many classes at once) | ui_probe.h/cpp |
 
