@@ -77,6 +77,7 @@ void YesNoHandler::OnFrameInner(void* thisPtr)
     // Detect dialog closing
     if ((state == STATE_CLOSING || state == STATE_DONE) &&
         m_lastState == STATE_INTERACTIVE) {
+        m_dialogActive = false;
         int32_t result = ReadResult(thisPtr);
         Logger_Log("YesNo", "Dialog closing with result: %d", result);
     }

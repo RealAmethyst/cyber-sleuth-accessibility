@@ -141,6 +141,7 @@ constexpr uintptr_t FUNC_CUiFirstSequence_Tick = 0x4295C0;
 constexpr uintptr_t FUNC_CUiMainMenu_Tick     = 0x4B6270;
 constexpr uintptr_t FUNC_CUiYesNoWindow_Tick  = 0x426C90;
 constexpr uintptr_t FUNC_CUiScenarioSelect_Tick = 0x4C89A0;
+constexpr uintptr_t FUNC_CUiOption_Tick        = 0x48DD20;
 
 // === CUiScenarioSelect member offsets (from memory dumps) ===
 // Tick fires during the cutscene AND the interactive menu.
@@ -265,6 +266,45 @@ namespace Vista {
     constexpr uintptr_t CUE_COL_STARTTIME = 0x04;
     constexpr uintptr_t CUE_COL_ENDTIME   = 0x08;
     constexpr uintptr_t CUE_COL_TEXTID    = 0x0C;
+}
+
+// === CUiOption member offsets (from memory dumps) ===
+// Sub-screen state: 5=main settings tab, 17=graphic options submenu
+// Cursor is a global index across all tabs.
+// Item count at +0x0344 = 13 (max index) on main tab.
+namespace Option {
+    // State handler function RVAs — dispatched from the tick's function table
+    // at this+0x10 indexed by the state at this+0x138.
+    // These only fire when the menu is in that interactive state (zero overhead when idle).
+    constexpr uintptr_t FUNC_State5_Main    = 0x492DA0;  // Main options tab (1996 bytes)
+    constexpr uintptr_t FUNC_State13_Button = 0x493A20;  // Button settings (152 bytes)
+    constexpr uintptr_t FUNC_State17_Graphic = 0x493C50; // Graphic options (152 bytes)
+
+    constexpr uintptr_t SUB_SCREEN       = 0x0138;  // int32, sub-screen state (5=main, 17=graphic options)
+    constexpr uintptr_t CURSOR_INDEX     = 0x0338;  // int32, current cursor position
+    constexpr uintptr_t PREV_CURSOR      = 0x033C;  // int32, previous cursor position
+    constexpr uintptr_t ITEM_COUNT_MAX   = 0x0344;  // int32, max cursor index (13 on main tab)
+
+    // Global singleton that manages Graphic/Button sub-menus.
+    // State 17 (graphic) calls FUN_1404dbf40(DAT_140f20848, 0x90, 0, 0).
+    // The cursor for graphics options lives inside a sub-object (not in CUiOption).
+    constexpr uintptr_t DAT_GraphicGlobal = 0xF20848;  // ptr to global manager object
+
+    // GraphicGlobal internal layout:
+    //   +0x10: vector<T*> begin (pointers to wrapper objects)
+    //   +0x18: vector<T*> end
+    // Each wrapper's first 8 bytes point to an inner "screen" object.
+    // Inner object layout:
+    //   +0x08: int32 command ID (0x90 = graphic, 0x8f = button)
+    //   +0x1A0: int32 cursor index (0-based)
+    //   +0x1A4: int32 previous cursor
+    //   +0x1AC: int32 item count
+    constexpr int GRAPHIC_CMD_ID      = 0x90;
+    constexpr int BUTTON_CMD_ID       = 0x8F;
+    constexpr uintptr_t INNER_CMD_ID  = 0x08;   // int32 command ID
+    constexpr uintptr_t INNER_CURSOR  = 0x1A0;  // int32 cursor index
+    constexpr uintptr_t INNER_PREV    = 0x1A4;  // int32 previous cursor
+    constexpr uintptr_t INNER_COUNT   = 0x1AC;  // int32 item count
 }
 
 // === Game context RVAs ===

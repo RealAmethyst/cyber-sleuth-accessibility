@@ -86,6 +86,32 @@ public:
     };
     std::vector<ScenarioSelectEvent> ConsumeScenarioSelectEvents();
 
+    // Help message events — cached when the game looks up help_message text.
+    // OptionHandler reads these to detect cursor movement in the options menu.
+    struct HelpMessageEvent {
+        int rowId = 0;
+        std::string text;
+    };
+    std::vector<HelpMessageEvent> ConsumeHelpMessages();
+
+    // Option value events — common_message lookups captured while option tracking is active.
+    // OptionHandler reads these to detect value changes (left/right adjustments).
+    struct OptionValueEvent {
+        int rowId = 0;
+        std::string text;
+    };
+    std::vector<OptionValueEvent> ConsumeOptionValues();
+
+    // Enable/disable common_message tracking for the options menu.
+    // Call from OptionHandler when the options tick is active/inactive.
+    void SetOptionTrackingActive(bool active);
+
+    // Returns true if the given help_message row ID belongs to the options menu.
+    // Used by HookedLookupText to auto-enable option tracking when the game
+    // fetches option help text (which arrives before value lookups in init bursts).
+    static bool IsOptionHelpId(int rowId);
+
+
 private:
     TextCapture() = default;
 
@@ -100,6 +126,15 @@ private:
     // Scenario select events (accumulated per frame, consumed by handler)
     mutable std::mutex m_scenarioMutex;
     std::vector<ScenarioSelectEvent> m_scenarioEvents;
+
+    // Help message events for OptionHandler
+    mutable std::mutex m_helpMsgMutex;
+    std::vector<HelpMessageEvent> m_helpMsgEvents;
+
+    // Option value events (common_message captured while option tracking active)
+    mutable std::mutex m_optionValueMutex;
+    std::vector<OptionValueEvent> m_optionValueEvents;
+    std::atomic<bool> m_optionTrackingActive{false};
 
     bool m_installed = false;
 

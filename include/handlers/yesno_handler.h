@@ -35,6 +35,10 @@ public:
     void OnFrameInner(void* thisPtr);
     void OnScreenClosed();
 
+    // Query — used by OptionHandler to detect Yes/No overlay
+    bool IsDialogActive() const { return m_dialogActive; }
+
+
 private:
     YesNoHandler() = default;
     friend class TickHandler<YesNoHandler>;

@@ -38,6 +38,6 @@ private:
 
     std::mutex m_mutex;
     std::unordered_map<std::string, void*> m_activePointers;
-    size_t m_dumpSize = 512;
+    size_t m_dumpSize = 0x3000;
     bool m_f5WasDown = false;
 };

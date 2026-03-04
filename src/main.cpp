@@ -12,6 +12,7 @@
 #include "handlers/yesno_handler.h"
 #include "handlers/scenario_select_handler.h"
 #include "handlers/title_logo_handler.h"
+#include "handlers/option_handler.h"
 #include "text_capture.h"
 #include "game_text.h"
 
@@ -46,6 +47,11 @@ static std::vector<HandlerEntry> GetHandlers()
                                          [](){ YesNoHandler::Get()->Uninstall(); } },
         { ScenarioSelectHandler::Get(),  [](){ ScenarioSelectHandler::Get()->Install(); },
                                          [](){ ScenarioSelectHandler::Get()->Uninstall(); } },
+        // OptionHandler hooks state handler functions (not the tick) that only fire
+        // when the menu is interactive. Safe to install permanently — zero overhead
+        // when menu is closed. See option_handler.h for details.
+        { OptionHandler::Get(),          [](){ OptionHandler::Get()->Install(); },
+                                         [](){ OptionHandler::Get()->Uninstall(); } },
     };
 }
 

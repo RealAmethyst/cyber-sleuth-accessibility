@@ -111,6 +111,28 @@ const char* __fastcall TextCapture::HookedLookupText(
             self->m_latestYesNo = {rowId, entry.text};
         }
 
+        // Cache help_message entries for OptionHandler
+        if (entry.tableName == "help_message" && !entry.text.empty()) {
+            auto* self = TextCapture::Get();
+            std::lock_guard<std::mutex> lock(self->m_helpMsgMutex);
+            self->m_helpMsgEvents.push_back({rowId, entry.text});
+            // Auto-enable option value tracking when option help IDs appear.
+            // This ensures common_message values in the same init burst are captured,
+            // even before the state handler hook fires and OnFrameInner runs.
+            if (IsOptionHelpId(rowId)) {
+                self->m_optionTrackingActive.store(true, std::memory_order_relaxed);
+            }
+        }
+
+        // Cache common_message entries when option tracking is active
+        if (entry.tableName == "common_message" && !entry.text.empty()) {
+            auto* self = TextCapture::Get();
+            if (self->m_optionTrackingActive.load(std::memory_order_relaxed)) {
+                std::lock_guard<std::mutex> lock(self->m_optionValueMutex);
+                self->m_optionValueEvents.push_back({rowId, entry.text});
+            }
+        }
+
         // Cache scenario_select entries for ScenarioSelectHandler
         if (entry.tableName == "scenario_select" && !entry.text.empty()) {
             auto* self = TextCapture::Get();
@@ -170,6 +192,43 @@ std::vector<TextCapture::ScenarioSelectEvent> TextCapture::ConsumeScenarioSelect
     m_scenarioEvents.clear();
     return events;
 }
+
+std::vector<TextCapture::HelpMessageEvent> TextCapture::ConsumeHelpMessages()
+{
+    std::lock_guard<std::mutex> lock(m_helpMsgMutex);
+    std::vector<HelpMessageEvent> events = std::move(m_helpMsgEvents);
+    m_helpMsgEvents.clear();
+    return events;
+}
+
+std::vector<TextCapture::OptionValueEvent> TextCapture::ConsumeOptionValues()
+{
+    std::lock_guard<std::mutex> lock(m_optionValueMutex);
+    std::vector<OptionValueEvent> events = std::move(m_optionValueEvents);
+    m_optionValueEvents.clear();
+    return events;
+}
+
+void TextCapture::SetOptionTrackingActive(bool active)
+{
+    m_optionTrackingActive.store(active, std::memory_order_relaxed);
+}
+
+bool TextCapture::IsOptionHelpId(int rowId)
+{
+    // Title-screen help IDs: 2210-2219, 2231-2233, 2217, 2218
+    if (rowId >= 2210 && rowId <= 2219) return true;
+    if (rowId >= 2231 && rowId <= 2233) return true;
+    if (rowId == 2217 || rowId == 2218) return true;
+    // In-game help IDs: 2200-2209, 2221-2223
+    if (rowId >= 2200 && rowId <= 2209) return true;
+    if (rowId >= 2221 && rowId <= 2223) return true;
+    // Graphic sub-menu (same in both contexts): 4000-4003, 2207, 2208
+    if (rowId >= 4000 && rowId <= 4003) return true;
+    if (rowId == 2207 || rowId == 2208) return true;
+    return false;
+}
+
 
 // ============================================================
 // Per-frame diffing — called from SwapBuffers hook

@@ -61,6 +61,7 @@ add_library(CyberSleuthAccessibility SHARED
   src/handlers/yesno_handler.cpp
   src/handlers/scenario_select_handler.cpp
   src/handlers/title_logo_handler.cpp
+  src/handlers/option_handler.cpp
 )
 
 target_include_directories(CyberSleuthAccessibility PRIVATE include)
