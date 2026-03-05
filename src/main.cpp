@@ -13,6 +13,9 @@
 #include "handlers/scenario_select_handler.h"
 #include "handlers/title_logo_handler.h"
 #include "handlers/option_handler.h"
+#include "handlers/talk_handler.h"
+#include "handlers/talk_comm_handler.h"
+#include "handlers/player_setting_handler.h"
 #include "text_capture.h"
 #include "game_text.h"
 
@@ -52,6 +55,12 @@ static std::vector<HandlerEntry> GetHandlers()
         // when menu is closed. See option_handler.h for details.
         { OptionHandler::Get(),          [](){ OptionHandler::Get()->Install(); },
                                          [](){ OptionHandler::Get()->Uninstall(); } },
+        { TalkHandler::Get(),            [](){ TalkHandler::Get()->Install(); },
+                                         [](){ TalkHandler::Get()->Uninstall(); } },
+        { TalkCommHandler::Get(),        [](){ TalkCommHandler::Get()->Install(); },
+                                         [](){ TalkCommHandler::Get()->Uninstall(); } },
+        { PlayerSettingHandler::Get(),   [](){ PlayerSettingHandler::Get()->Install(); },
+                                         [](){ PlayerSettingHandler::Get()->Uninstall(); } },
     };
 }
 

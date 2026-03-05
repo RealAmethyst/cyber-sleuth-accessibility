@@ -142,6 +142,83 @@ constexpr uintptr_t FUNC_CUiMainMenu_Tick     = 0x4B6270;
 constexpr uintptr_t FUNC_CUiYesNoWindow_Tick  = 0x426C90;
 constexpr uintptr_t FUNC_CUiScenarioSelect_Tick = 0x4C89A0;
 constexpr uintptr_t FUNC_CUiOption_Tick        = 0x48DD20;
+constexpr uintptr_t FUNC_CUiPlayerSetting_Tick = 0x337CF0;
+constexpr uintptr_t FUNC_CUiTalkWindow_Tick   = 0x40F480;
+
+// === CUiTalkWindow member offsets (from Ghidra decompilation) ===
+// State machine: 13 states (0-12), dispatched via function table at this+0x08.
+// State 7 = interactive (dialog visible, waiting for player input).
+// Tick fires continuously while the dialog system is active.
+namespace TalkWindow {
+    constexpr uintptr_t STATE             = 0x70;   // uint32, main state
+    constexpr uintptr_t SUB_STATE         = 0x74;   // uint32, next/sub state
+    constexpr uintptr_t PARTS_SIDE0       = 0x80;   // ptr, TalkWindowParts (left/side 0)
+    constexpr uintptr_t PARTS_SIDE1       = 0x88;   // ptr, TalkWindowParts (right/side 1)
+    constexpr uintptr_t MSG_DATA          = 0xB0;   // 28 bytes, current message data
+    constexpr uintptr_t ACTIVE_SIDE       = 0x2E0;  // int32, 0 or 1
+    constexpr uintptr_t HAS_SPEAKER       = 0x2E4;  // byte, speaker name present
+    constexpr uintptr_t ACTIVE_FLAG       = 0x2F0;  // byte, dialog is active
+    constexpr uintptr_t MSG_PENDING       = 0x2F1;  // byte, message pending
+    constexpr uintptr_t MULTI_PAGE        = 0x2F2;  // byte, multi-page flag
+    constexpr uintptr_t CURSOR_VISIBLE    = 0x2F4;  // byte, cursor visible
+    constexpr uintptr_t SPEAKER_VISIBLE   = 0x2F5;  // byte, speaker name visible
+    constexpr uintptr_t CLOSE_REQUESTED   = 0x2F9;  // byte, close requested
+    constexpr uintptr_t PAGE_INDEX        = 0x304;  // int32, current page (0-based)
+    constexpr uintptr_t PAGE_COUNT        = 0x308;  // int32, total pages
+
+    // Text widget pointers — dereference widget, then read char* at widget+0x28
+    constexpr uintptr_t BODY_TEXT_WIDGET  = 0xF0;   // ptr to text widget for dialog body
+    constexpr uintptr_t SPEAKER_WIDGET    = 0x1E8;  // ptr to text widget for speaker name
+    constexpr uintptr_t WIDGET_TEXT_PTR   = 0x28;   // char* inside the text widget object
+
+    // Speaker ID tracking
+    constexpr uintptr_t LAST_SPEAKER_ID   = 0xE8;   // int32, last speaker character ID
+}
+
+// === CUiTalkCommunication member offsets (from Ghidra decompilation) ===
+// Chat room / EDEN communication scenes.
+// State machine: 0=idle, 1=opening, 2=setup, 3=animating, 4=closing
+// TalkWindowParts at this+0x08 holds the chat bubble widget.
+constexpr uintptr_t FUNC_CUiTalkCommunication_Tick = 0x40C450;
+
+namespace TalkComm {
+    constexpr uintptr_t PARTS_WIDGET      = 0x08;   // ptr, TalkWindowParts (chat bubble)
+    constexpr uintptr_t MSG_HANDLER_ID    = 0x10;   // int32, message handler ID
+    constexpr uintptr_t DONE_FLAG         = 0x14;   // byte, done/return value
+    constexpr uintptr_t STATE             = 0x18;   // int32, state machine
+    constexpr uintptr_t POSITION_ID       = 0x20;   // int32, position
+    constexpr uintptr_t SPEAKER_ID        = 0x24;   // int32, speaker/offset ID
+    constexpr uintptr_t SPEAKER_NAME      = 0x28;   // SSO string (32 bytes), speaker name
+    constexpr uintptr_t TEXT_STRING        = 0x48;   // SSO string (32 bytes), message text (?)
+    constexpr uintptr_t RESOURCE_NAME     = 0x68;   // SSO string (32 bytes), resource name
+    constexpr uintptr_t SCENE_OBJECT      = 0x88;   // ptr, 3D scene display (0x2b0)
+    constexpr uintptr_t CAMERA_OBJECT     = 0x90;   // ptr, camera (0x50)
+
+    // SSO string layout (MSVC): 16-byte inline buffer, then size_t size at +0x10,
+    // size_t capacity at +0x18. If capacity >= 16, first 8 bytes = heap pointer.
+    constexpr uintptr_t SSO_CAPACITY_OFFSET = 0x18;  // relative to SSO string start
+}
+
+// === CUiPlayerSetting member offsets (from Ghidra decompilation) ===
+// Naming/avatar selection screen. 9-state machine dispatched via function table at this+0x10.
+// State 4 = interactive (avatar selection with tabs). Tabs 0-3 cycled with L/R.
+// Each tab has a list object with selectable items.
+namespace PlayerSetting {
+    constexpr uintptr_t STATE             = 0x58;   // uint32, main state (0-8)
+    constexpr uintptr_t NEXT_STATE        = 0x5C;   // uint32, next/target state
+    constexpr uintptr_t DONE_FLAG         = 0x68;   // byte, screen closing
+    constexpr uintptr_t INTERACTIVE_FLAG  = 0x6A;   // byte, interactive mode active
+    constexpr uintptr_t TAB_INDEX         = 0x1C0;  // int32, current tab (0-3)
+    constexpr uintptr_t TAB_LIST_BASE     = 0x1A0;  // array of 4 tab list object pointers
+    constexpr uintptr_t TAB_LIST_STRIDE   = 0x08;   // 8 bytes per pointer
+
+    // Tab list object member offsets
+    constexpr uintptr_t LIST_BEGIN        = 0x08;   // ptr, list data begin
+    constexpr uintptr_t LIST_END          = 0x10;   // ptr, list data end
+    constexpr uintptr_t LIST_SELECTED     = 0x20;   // int32, selected index (absolute)
+    constexpr uintptr_t LIST_SCROLL       = 0x28;   // int32, scroll offset
+    constexpr uintptr_t LIST_ENTRY_SIZE   = 0x10;   // 16 bytes per entry
+}
 
 // === CUiScenarioSelect member offsets (from memory dumps) ===
 // Tick fires during the cutscene AND the interactive menu.

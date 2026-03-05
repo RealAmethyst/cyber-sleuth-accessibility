@@ -62,6 +62,9 @@ add_library(CyberSleuthAccessibility SHARED
   src/handlers/scenario_select_handler.cpp
   src/handlers/title_logo_handler.cpp
   src/handlers/option_handler.cpp
+  src/handlers/talk_handler.cpp
+  src/handlers/talk_comm_handler.cpp
+  src/handlers/player_setting_handler.cpp
 )
 
 target_include_directories(CyberSleuthAccessibility PRIVATE include)
